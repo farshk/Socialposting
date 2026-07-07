@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Viralify — Social Video Publisher</title>
+  <meta name="description" content="Schedule and publish video content across YouTube, Instagram, TikTok, Facebook, X, Pinterest, Threads, and LinkedIn with AI-powered content generation.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/pages.css">
+</head>
+<body>
+
+  <!-- Toast Notifications -->
+  <div id="toast-container"></div>
+
+  <!-- Modal Overlay -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div id="modal-box" class="modal-box">
+      <div class="modal-header">
+        <h3 id="modal-title">Modal Title</h3>
+        <button id="modal-close" class="btn-icon" onclick="App.closeModal()"><i class="fas fa-times"></i></button>
+      </div>
+      <div id="modal-content" class="modal-content"></div>
+    </div>
+  </div>
+
+  <!-- App Layout -->
+  <div class="app-layout">
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-logo">
+          <i class="fas fa-bolt"></i>
+        </div>
+        <span class="brand-name">Viralify</span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item active" data-page="dashboard" id="nav-dashboard">
+          <i class="fas fa-chart-pie"></i>
+          <span>Dashboard</span>
+        </a>
+        <a href="#" class="nav-item" data-page="composer" id="nav-composer">
+          <i class="fas fa-plus-circle"></i>
+          <span>New Post</span>
+          <span class="nav-badge">New</span>
+        </a>
+        <a href="#" class="nav-item" data-page="scheduler" id="nav-scheduler">
+          <i class="fas fa-calendar-alt"></i>
+          <span>Schedule</span>
+        </a>
+        <a href="#" class="nav-item" data-page="ai-studio" id="nav-ai-studio">
+          <i class="fas fa-wand-magic-sparkles"></i>
+          <span>AI Studio</span>
+          <span class="nav-badge ai-badge">AI</span>
+        </a>
+        <a href="#" class="nav-item" data-page="accounts" id="nav-accounts">
+          <i class="fas fa-plug"></i>
+          <span>Accounts</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-platforms">
+        <p class="sidebar-section-label">Connected</p>
+        <div class="platform-dots" id="sidebar-platform-dots">
+          <!-- Filled by JS -->
+        </div>
+      </div>
+
+      <div class="sidebar-bottom">
+        <div class="user-avatar-wrap">
+          <div class="user-avatar">FK</div>
+          <div class="user-info">
+            <p class="user-name">Farrukh K.</p>
+            <p class="user-plan">Pro Plan</p>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+
+      <!-- Mobile Header -->
+      <header class="mobile-header">
+        <button class="btn-icon" onclick="App.toggleSidebar()"><i class="fas fa-bars"></i></button>
+        <span class="brand-name">Viralify</span>
+        <button class="btn-icon" onclick="App.navigate('composer')"><i class="fas fa-plus"></i></button>
+      </header>
+
+      <!-- ========== DASHBOARD PAGE ========== -->
+      <section class="page active" id="page-dashboard">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Dashboard</h1>
+            <p class="page-subtitle">Welcome back! Here's what's happening with your content.</p>
+          </div>
+          <button class="btn btn-primary" onclick="App.navigate('composer')">
+            <i class="fas fa-plus"></i> New Post
+          </button>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="stats-grid" id="stats-grid">
+          <!-- Filled by JS -->
+        </div>
+
+        <!-- Main Grid -->
+        <div class="dashboard-grid">
+          <!-- Upcoming Posts -->
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title"><i class="fas fa-clock"></i> Upcoming Posts</h2>
+              <button class="btn btn-ghost btn-sm" onclick="App.navigate('scheduler')">View All</button>
+            </div>
+            <div id="upcoming-posts-list" class="posts-list">
+              <!-- Filled by JS -->
+            </div>
+          </div>
+
+          <!-- Platform Overview -->
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title"><i class="fas fa-share-alt"></i> Platform Overview</h2>
+            </div>
+            <div id="platform-overview" class="platform-overview">
+              <!-- Filled by JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Posts -->
+        <div class="card mt-4">
+          <div class="card-header">
+            <h2 class="card-title"><i class="fas fa-history"></i> Recent Activity</h2>
+            <div class="filter-tabs">
+              <button class="filter-tab active" data-filter="all">All</button>
+              <button class="filter-tab" data-filter="published">Published</button>
+              <button class="filter-tab" data-filter="scheduled">Scheduled</button>
+              <button class="filter-tab" data-filter="draft">Drafts</button>
+            </div>
+          </div>
+          <div id="recent-posts-table" class="posts-table-wrap">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== NEW POST / COMPOSER PAGE ========== -->
+      <section class="page" id="page-composer">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">New Post</h1>
+            <p class="page-subtitle">Create and schedule your video content across platforms.</p>
+          </div>
+        </div>
+
+        <!-- Stepper -->
+        <div class="stepper" id="composer-stepper">
+          <div class="step active" data-step="1">
+            <div class="step-circle">1</div>
+            <span class="step-label">Upload</span>
+          </div>
+          <div class="step-line"></div>
+          <div class="step" data-step="2">
+            <div class="step-circle">2</div>
+            <span class="step-label">Platforms</span>
+          </div>
+          <div class="step-line"></div>
+          <div class="step" data-step="3">
+            <div class="step-circle">3</div>
+            <span class="step-label">Content</span>
+          </div>
+          <div class="step-line"></div>
+          <div class="step" data-step="4">
+            <div class="step-circle">4</div>
+            <span class="step-label">Schedule</span>
+          </div>
+          <div class="step-line"></div>
+          <div class="step" data-step="5">
+            <div class="step-circle">5</div>
+            <span class="step-label">Review</span>
+          </div>
+        </div>
+
+        <!-- Step 1: Upload -->
+        <div class="composer-step active" id="composer-step-1">
+          <div class="step-layout">
+            <div class="step-main">
+              <div class="card">
+                <h2 class="card-title mb-3"><i class="fas fa-cloud-upload-alt"></i> Upload Your Video</h2>
+                <div class="upload-zone" id="upload-zone" onclick="document.getElementById('video-file-input').click()">
+                  <input type="file" id="video-file-input" accept="video/*" hidden onchange="Composer.handleFileSelect(this)">
+                  <div class="upload-icon"><i class="fas fa-video"></i></div>
+                  <h3 class="upload-title">Drag & drop your video here</h3>
+                  <p class="upload-sub">or click to browse files</p>
+                  <div class="upload-formats">
+                    <span class="format-tag">MP4</span>
+                    <span class="format-tag">MOV</span>
+                    <span class="format-tag">AVI</span>
+                    <span class="format-tag">MKV</span>
+                    <span class="format-tag">WebM</span>
+                  </div>
+                  <p class="upload-limit">Max file size: 2GB</p>
+                </div>
+
+                <div class="video-preview-wrap hidden" id="video-preview-wrap">
+                  <video id="video-preview" controls class="video-preview"></video>
+                  <div class="video-meta" id="video-meta"></div>
+                  <button class="btn btn-ghost btn-sm" onclick="Composer.removeVideo()">
+                    <i class="fas fa-trash"></i> Remove
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="step-tips">
+              <div class="card card-tips">
+                <h3 class="tips-title"><i class="fas fa-lightbulb"></i> Pro Tips</h3>
+                <ul class="tips-list">
+                  <li>Use 9:16 aspect ratio for Reels, TikTok & Shorts</li>
+                  <li>16:9 works best for YouTube</li>
+                  <li>Keep videos under 60s for best engagement on Instagram</li>
+                  <li>MP4 (H.264) is universally supported</li>
+                  <li>High resolution (1080p+) gets more reach</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <div class="step-actions">
+            <span></span>
+            <button class="btn btn-primary" onclick="Composer.nextStep()" id="step1-next">
+              Next: Select Platforms <i class="fas fa-arrow-right"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Step 2: Platform Selection -->
+        <div class="composer-step" id="composer-step-2">
+          <div class="card">
+            <h2 class="card-title mb-1"><i class="fas fa-share-alt"></i> Select Platforms</h2>
+            <p class="card-sub mb-4">Choose where to publish your video. You can select multiple platforms.</p>
+            <div class="platform-grid" id="platform-selector-grid">
+              <!-- Filled by JS -->
+            </div>
+          </div>
+          <div class="step-actions mt-4">
+            <button class="btn btn-ghost" onclick="Composer.prevStep()"><i class="fas fa-arrow-left"></i> Back</button>
+            <button class="btn btn-primary" onclick="Composer.nextStep()">
+              Next: Add Content <i class="fas fa-arrow-right"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Step 3: Content Generation -->
+        <div class="composer-step" id="composer-step-3">
+          <div class="step-layout">
+            <div class="step-main">
+              <div class="card mb-4">
+                <h2 class="card-title mb-3"><i class="fas fa-wand-magic-sparkles"></i> AI Content Generator</h2>
+                <div class="ai-input-row">
+                  <div class="form-group flex-1">
+                    <label class="form-label">Video Topic / Niche</label>
+                    <input type="text" id="ai-topic" class="form-input" placeholder="e.g. 'travel vlog in Bali', 'cooking tutorial'">
+                  </div>
+                  <div class="form-group flex-1">
+                    <label class="form-label">Keywords (comma separated)</label>
+                    <input type="text" id="ai-keywords" class="form-input" placeholder="e.g. travel, lifestyle, food">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">&nbsp;</label>
+                    <button class="btn btn-ai" onclick="Composer.generateContent()" id="ai-generate-btn">
+                      <i class="fas fa-sparkles"></i> Generate
+                    </button>
+                  </div>
+                </div>
+
+                <div id="ai-results" class="ai-results hidden">
+                  <!-- Titles -->
+                  <div class="ai-section">
+                    <div class="ai-section-header">
+                      <h3><i class="fas fa-heading"></i> Title Suggestions</h3>
+                      <button class="btn btn-ghost btn-xs" onclick="AIGenerator.regenerateTitles()"><i class="fas fa-redo"></i> Regenerate</button>
+                    </div>
+                    <div id="title-options" class="title-options"></div>
+                  </div>
+
+                  <!-- Description -->
+                  <div class="ai-section">
+                    <div class="ai-section-header">
+                      <h3><i class="fas fa-align-left"></i> Description</h3>
+                      <button class="btn btn-ghost btn-xs" onclick="AIGenerator.regenerateDescription()"><i class="fas fa-redo"></i> Regenerate</button>
+                    </div>
+                    <textarea id="post-description" class="form-textarea" rows="5" placeholder="Your video description will appear here..."></textarea>
+                    <div class="char-count"><span id="desc-char-count">0</span> characters</div>
+                  </div>
+
+                  <!-- Hashtags -->
+                  <div class="ai-section">
+                    <div class="ai-section-header">
+                      <h3><i class="fas fa-hashtag"></i> Hashtags</h3>
+                      <button class="btn btn-ghost btn-xs" onclick="AIGenerator.regenerateHashtags()"><i class="fas fa-redo"></i> Regenerate</button>
+                    </div>
+                    <div id="hashtag-chips" class="hashtag-chips"></div>
+                    <div class="hashtag-actions">
+                      <button class="btn btn-ghost btn-xs" onclick="Composer.selectAllHashtags()"><i class="fas fa-check-double"></i> Select All</button>
+                      <button class="btn btn-ghost btn-xs" onclick="Composer.clearHashtags()"><i class="fas fa-times"></i> Clear</button>
+                      <span class="hashtag-count"><span id="selected-hashtag-count">0</span> selected</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Manual entry fallback -->
+                <div id="manual-content" class="manual-content">
+                  <div class="form-group mt-3">
+                    <label class="form-label">Post Title</label>
+                    <input type="text" id="post-title" class="form-input" placeholder="Enter your video title...">
+                  </div>
+                  <div class="form-group mt-3">
+                    <label class="form-label">Description</label>
+                    <textarea id="post-description-manual" class="form-textarea" rows="4" placeholder="Write your description..."></textarea>
+                  </div>
+                  <div class="form-group mt-3">
+                    <label class="form-label">Hashtags (space or comma separated)</label>
+                    <input type="text" id="post-hashtags-manual" class="form-input" placeholder="#travel #lifestyle #vlog">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Per-platform preview -->
+            <div class="step-preview">
+              <div class="card card-preview">
+                <h3 class="tips-title"><i class="fas fa-eye"></i> Platform Previews</h3>
+                <div id="platform-previews" class="platform-previews">
+                  <!-- Filled by JS based on selected platforms -->
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="step-actions">
+            <button class="btn btn-ghost" onclick="Composer.prevStep()"><i class="fas fa-arrow-left"></i> Back</button>
+            <button class="btn btn-primary" onclick="Composer.nextStep()">
+              Next: Schedule <i class="fas fa-arrow-right"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Step 4: Schedule -->
+        <div class="composer-step" id="composer-step-4">
+          <div class="step-layout">
+            <div class="step-main">
+              <div class="card">
+                <h2 class="card-title mb-3"><i class="fas fa-calendar-alt"></i> Schedule Your Post</h2>
+
+                <div class="schedule-options">
+                  <label class="schedule-option selected" id="opt-now">
+                    <input type="radio" name="schedule-type" value="now" checked onchange="Composer.updateScheduleType(this)">
+                    <div class="schedule-option-content">
+                      <i class="fas fa-bolt"></i>
+                      <div>
+                        <strong>Publish Now</strong>
+                        <p>Post immediately to all selected platforms</p>
+                      </div>
+                    </div>
+                  </label>
+
+                  <label class="schedule-option" id="opt-scheduled">
+                    <input type="radio" name="schedule-type" value="scheduled" onchange="Composer.updateScheduleType(this)">
+                    <div class="schedule-option-content">
+                      <i class="fas fa-clock"></i>
+                      <div>
+                        <strong>Schedule for Later</strong>
+                        <p>Choose a specific date and time</p>
+                      </div>
+                    </div>
+                  </label>
+
+                  <label class="schedule-option" id="opt-draft">
+                    <input type="radio" name="schedule-type" value="draft" onchange="Composer.updateScheduleType(this)">
+                    <div class="schedule-option-content">
+                      <i class="fas fa-file-alt"></i>
+                      <div>
+                        <strong>Save as Draft</strong>
+                        <p>Save and publish later manually</p>
+                      </div>
+                    </div>
+                  </label>
+                </div>
+
+                <div id="datetime-picker-wrap" class="datetime-picker-wrap hidden mt-4">
+                  <div class="form-row">
+                    <div class="form-group flex-1">
+                      <label class="form-label">Date</label>
+                      <input type="date" id="schedule-date" class="form-input">
+                    </div>
+                    <div class="form-group flex-1">
+                      <label class="form-label">Time</label>
+                      <input type="time" id="schedule-time" class="form-input">
+                    </div>
+                    <div class="form-group flex-1">
+                      <label class="form-label">Timezone</label>
+                      <select id="schedule-timezone" class="form-input">
+                        <option value="UTC+5">PKT (UTC+5)</option>
+                        <option value="UTC">UTC</option>
+                        <option value="UTC-5">EST (UTC-5)</option>
+                        <option value="UTC-8">PST (UTC-8)</option>
+                        <option value="UTC+1">CET (UTC+1)</option>
+                        <option value="UTC+8">CST (UTC+8)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="best-times-wrap mt-4">
+                  <h3 class="tips-title"><i class="fas fa-chart-line"></i> Best Times to Post</h3>
+                  <div id="best-times-grid" class="best-times-grid">
+                    <!-- Filled by JS -->
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="step-tips">
+              <div class="card card-tips">
+                <h3 class="tips-title"><i class="fas fa-clock"></i> Timing Tips</h3>
+                <ul class="tips-list">
+                  <li>Instagram: Tue–Fri, 9am–11am</li>
+                  <li>TikTok: Tue, Thu, Fri: 6–9pm</li>
+                  <li>YouTube: Thu–Sat, 12pm–4pm</li>
+                  <li>Facebook: Wed 11am, Mon/Thu 1–4pm</li>
+                  <li>X: Mon–Fri, 9am–5pm</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <div class="step-actions">
+            <button class="btn btn-ghost" onclick="Composer.prevStep()"><i class="fas fa-arrow-left"></i> Back</button>
+            <button class="btn btn-primary" onclick="Composer.nextStep()">
+              Review Post <i class="fas fa-arrow-right"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Step 5: Review & Publish -->
+        <div class="composer-step" id="composer-step-5">
+          <div class="card mb-4">
+            <h2 class="card-title mb-3"><i class="fas fa-check-circle"></i> Review & Publish</h2>
+            <div id="review-summary" class="review-summary">
+              <!-- Filled by JS -->
+            </div>
+          </div>
+          <div class="step-actions">
+            <button class="btn btn-ghost" onclick="Composer.prevStep()"><i class="fas fa-arrow-left"></i> Back</button>
+            <button class="btn btn-success" onclick="Composer.publish()" id="publish-btn">
+              <i class="fas fa-paper-plane"></i> <span id="publish-btn-label">Publish Now</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== SCHEDULER PAGE ========== -->
+      <section class="page" id="page-scheduler">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Schedule</h1>
+            <p class="page-subtitle">Manage all your scheduled and published posts.</p>
+          </div>
+          <button class="btn btn-primary" onclick="App.navigate('composer')">
+            <i class="fas fa-plus"></i> Schedule Post
+          </button>
+        </div>
+
+        <div class="calendar-layout">
+          <div class="card calendar-card">
+            <div class="calendar-nav">
+              <button class="btn-icon" onclick="Calendar.prevMonth()"><i class="fas fa-chevron-left"></i></button>
+              <h2 id="calendar-month-label" class="calendar-month">July 2026</h2>
+              <button class="btn-icon" onclick="Calendar.nextMonth()"><i class="fas fa-chevron-right"></i></button>
+            </div>
+            <div class="calendar-grid-wrap">
+              <div class="calendar-weekdays">
+                <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+              </div>
+              <div id="calendar-grid" class="calendar-grid">
+                <!-- Filled by JS -->
+              </div>
+            </div>
+          </div>
+
+          <div class="card scheduled-sidebar">
+            <h3 class="card-title mb-3"><i class="fas fa-list"></i> All Scheduled</h3>
+            <div class="platform-filter-row" id="sched-platform-filter">
+              <button class="platform-filter-btn active" data-platform="all">All</button>
+            </div>
+            <div id="scheduled-posts-list" class="posts-list scheduled-list">
+              <!-- Filled by JS -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== AI STUDIO PAGE ========== -->
+      <section class="page" id="page-ai-studio">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">AI Studio <span class="badge-ai">AI Powered</span></h1>
+            <p class="page-subtitle">Generate engaging titles, descriptions, and hashtags for your content.</p>
+          </div>
+        </div>
+
+        <div class="ai-studio-layout">
+          <div class="card ai-input-card">
+            <h2 class="card-title mb-3"><i class="fas fa-sliders-h"></i> Content Settings</h2>
+
+            <div class="form-group">
+              <label class="form-label">Video Topic / Niche <span class="required">*</span></label>
+              <input type="text" id="studio-topic" class="form-input" placeholder="e.g. Morning skincare routine, Grilled salmon recipe">
+            </div>
+
+            <div class="form-group mt-3">
+              <label class="form-label">Target Platform</label>
+              <div class="platform-radio-group" id="studio-platform-group">
+                <!-- Filled by JS -->
+              </div>
+            </div>
+
+            <div class="form-group mt-3">
+              <label class="form-label">Tone / Style</label>
+              <div class="tone-options">
+                <button class="tone-btn active" data-tone="engaging">🔥 Engaging</button>
+                <button class="tone-btn" data-tone="professional">💼 Professional</button>
+                <button class="tone-btn" data-tone="funny">😂 Funny</button>
+                <button class="tone-btn" data-tone="inspirational">✨ Inspirational</button>
+                <button class="tone-btn" data-tone="educational">📚 Educational</button>
+              </div>
+            </div>
+
+            <div class="form-group mt-3">
+              <label class="form-label">Keywords (optional)</label>
+              <input type="text" id="studio-keywords" class="form-input" placeholder="Add relevant keywords separated by commas">
+            </div>
+
+            <div class="form-group mt-3">
+              <label class="form-label">Number of title options</label>
+              <div class="range-wrap">
+                <input type="range" id="studio-title-count" min="3" max="10" value="5" class="form-range" oninput="document.getElementById('studio-title-count-val').textContent = this.value">
+                <span id="studio-title-count-val" class="range-val">5</span>
+              </div>
+            </div>
+
+            <div class="form-group mt-3">
+              <label class="form-label">Number of hashtags</label>
+              <div class="range-wrap">
+                <input type="range" id="studio-hashtag-count" min="5" max="30" value="15" class="form-range" oninput="document.getElementById('studio-hashtag-count-val').textContent = this.value">
+                <span id="studio-hashtag-count-val" class="range-val">15</span>
+              </div>
+            </div>
+
+            <button class="btn btn-ai btn-full mt-4" onclick="AIStudio.generate()" id="studio-generate-btn">
+              <i class="fas fa-sparkles"></i> Generate Content
+            </button>
+          </div>
+
+          <div class="ai-output-area" id="ai-studio-output">
+            <div class="ai-empty-state" id="ai-empty-state">
+              <div class="empty-icon">🤖</div>
+              <h3>Ready to generate</h3>
+              <p>Fill in your topic and click Generate to get AI-powered content suggestions.</p>
+            </div>
+
+            <div id="ai-studio-results" class="hidden">
+              <div class="card mb-4">
+                <div class="card-header">
+                  <h3 class="card-title"><i class="fas fa-heading"></i> Title Suggestions</h3>
+                  <div class="card-actions">
+                    <button class="btn btn-ghost btn-sm" onclick="AIStudio.copyTitles()"><i class="fas fa-copy"></i> Copy All</button>
+                    <button class="btn btn-ghost btn-sm" onclick="AIStudio.regenerate()"><i class="fas fa-redo"></i> Regenerate</button>
+                  </div>
+                </div>
+                <div id="studio-title-list" class="studio-title-list"></div>
+              </div>
+
+              <div class="card mb-4">
+                <div class="card-header">
+                  <h3 class="card-title"><i class="fas fa-align-left"></i> Description</h3>
+                  <div class="card-actions">
+                    <button class="btn btn-ghost btn-sm" onclick="AIStudio.copyDescription()"><i class="fas fa-copy"></i> Copy</button>
+                    <button class="btn btn-ghost btn-sm" onclick="AIStudio.regenerateDescription()"><i class="fas fa-redo"></i> Regenerate</button>
+                  </div>
+                </div>
+                <div id="studio-description" class="studio-description"></div>
+              </div>
+
+              <div class="card mb-4">
+                <div class="card-header">
+                  <h3 class="card-title"><i class="fas fa-hashtag"></i> Hashtags</h3>
+                  <div class="card-actions">
+                    <button class="btn btn-ghost btn-sm" onclick="AIStudio.copyHashtags()"><i class="fas fa-copy"></i> Copy All</button>
+                    <button class="btn btn-ghost btn-sm" onclick="AIStudio.regenerateHashtags()"><i class="fas fa-redo"></i> Regenerate</button>
+                  </div>
+                </div>
+                <div id="studio-hashtags" class="hashtag-chips studio-hashtags"></div>
+              </div>
+
+              <div class="card">
+                <div class="card-header">
+                  <h3 class="card-title"><i class="fas fa-chart-bar"></i> Engagement Tips</h3>
+                </div>
+                <div id="studio-tips" class="engagement-tips"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== ACCOUNTS PAGE ========== -->
+      <section class="page" id="page-accounts">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Connected Accounts</h1>
+            <p class="page-subtitle">Manage your social media platform connections.</p>
+          </div>
+        </div>
+
+        <div class="accounts-grid" id="accounts-grid">
+          <!-- Filled by JS -->
+        </div>
+
+        <div class="card mt-4">
+          <h2 class="card-title mb-3"><i class="fas fa-shield-alt"></i> Privacy & Permissions</h2>
+          <p class="text-muted">Viralify uses official OAuth 2.0 authentication for all platform connections. We only request the minimum permissions needed to publish content on your behalf. Your credentials are never stored — only access tokens are saved securely.</p>
+          <div class="permissions-list mt-3">
+            <div class="permission-item">
+              <i class="fas fa-check-circle text-success"></i>
+              <span>End-to-end encrypted token storage</span>
+            </div>
+            <div class="permission-item">
+              <i class="fas fa-check-circle text-success"></i>
+              <span>Revoke access at any time from this page</span>
+            </div>
+            <div class="permission-item">
+              <i class="fas fa-check-circle text-success"></i>
+              <span>Compliant with all platform API terms of service</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/platforms.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/ai-generator.js"></script>
+  <script src="js/scheduler.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
