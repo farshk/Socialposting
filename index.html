@@ -74,12 +74,17 @@
 
       <div class="sidebar-bottom">
         <div class="user-avatar-wrap">
-          <div class="user-avatar">FK</div>
+          <div class="user-avatar" id="user-avatar-initials">FK</div>
+          <img class="user-avatar-photo" id="user-avatar-photo" src="" alt="User avatar" style="display:none;width:36px;height:36px;border-radius:50%;object-fit:cover;" />
           <div class="user-info">
-            <p class="user-name">Farrukh K.</p>
-            <p class="user-plan">Pro Plan</p>
+            <p class="user-name" id="user-display-name">Farrukh K.</p>
+            <p class="user-plan" id="user-email">Pro Plan</p>
           </div>
         </div>
+        <button id="sidebar-signout-btn" class="sidebar-signout-btn" title="Sign Out">
+          <i class="fas fa-sign-out-alt"></i>
+          <span>Sign Out</span>
+        </button>
       </div>
     </aside>
 
@@ -655,6 +660,11 @@
   </div>
 
   <!-- Scripts -->
+  <!-- Firebase SDK (compat v9.23.0 — CDN, no npm required) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="js/firebase-config.js"></script>
+
   <script src="js/platforms.js"></script>
   <script src="js/data.js"></script>
   <script src="js/ai-generator.js"></script>

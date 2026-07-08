@@ -39,11 +39,24 @@ const AIStudioState = {
 // APP — Router & Core
 // ==============================
 const App = {
-  init() {
+  async init() {
+    // ── F001: Firebase Auth Gate ──────────────────────────────
+    // If Firebase is configured, verify user is authenticated before
+    // rendering the app. Gracefully degrades if Firebase is not set up.
+    if (window.FIREBASE_READY) {
+      const canProceed = await checkAuthAndInit();
+      if (!canProceed) return; // Redirecting to auth.html
+    }
+    // ─────────────────────────────────────────────────────────
+
     Data.init();
     this.renderSidebar();
     this.navigate('dashboard');
     this.setupEventListeners();
+
+    // Wire sign out button
+    const signoutBtn = document.getElementById('sidebar-signout-btn');
+    if (signoutBtn) signoutBtn.addEventListener('click', () => App.signOut());
   },
 
   navigate(page) {
@@ -1174,3 +1187,81 @@ function formatNumber(n) {
 document.addEventListener('DOMContentLoaded', () => {
   App.init();
 });
+
+// ==============================
+// F001: AUTH HELPERS
+// ==============================
+
+/**
+ * Checks Firebase auth state and redirects unauthenticated users to auth.html.
+ * Called at the top of App.init() when window.FIREBASE_READY is true.
+ * @returns {Promise<boolean>} true if user is authenticated and can proceed
+ */
+async function checkAuthAndInit() {
+  return new Promise((resolve) => {
+    const unsubscribe = firebase.auth().onAuthStateChanged((user) => {
+      unsubscribe();
+
+      if (!user) {
+        console.log('[Viralify App] No authenticated user — redirecting to auth.');
+        window.location.replace('auth.html');
+        resolve(false);
+        return;
+      }
+
+      // Hard gate: email/password users must have verified email
+      if (!user.emailVerified && user.providerData[0]?.providerId === 'password') {
+        console.log('[Viralify App] Email not verified — redirecting to auth.');
+        window.location.replace('auth.html');
+        resolve(false);
+        return;
+      }
+
+      // Authenticated — update sidebar with real user info
+      updateSidebarUser(user);
+      resolve(true);
+    });
+  });
+}
+
+/**
+ * Updates the sidebar with authenticated user's display name, email, and avatar.
+ * @param {object} user - Firebase Auth user object
+ */
+function updateSidebarUser(user) {
+  const displayName = user.displayName || user.email?.split('@')[0] || 'User';
+  const email = user.email || '';
+  const photoURL = user.photoURL;
+
+  const nameEl = document.getElementById('user-display-name');
+  if (nameEl) nameEl.textContent = displayName;
+
+  const emailEl = document.getElementById('user-email');
+  if (emailEl) emailEl.textContent = email;
+
+  const initialsEl = document.getElementById('user-avatar-initials');
+  const photoEl = document.getElementById('user-avatar-photo');
+
+  if (photoURL && photoEl) {
+    photoEl.src = photoURL;
+    photoEl.style.display = 'block';
+    if (initialsEl) initialsEl.style.display = 'none';
+  } else if (initialsEl) {
+    const initials = displayName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+    initialsEl.textContent = initials;
+  }
+}
+
+/**
+ * Signs out the current user and redirects to auth page.
+ * Called by the sidebar Sign Out button.
+ */
+App.signOut = async function () {
+  if (!window.FIREBASE_READY) return;
+  try {
+    await firebase.auth().signOut();
+    window.location.replace('auth.html');
+  } catch (err) {
+    console.error('[Viralify App] Sign out error:', err);
+  }
+};
