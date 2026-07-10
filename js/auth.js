@@ -93,13 +93,8 @@ async function signInWithGoogle() {
     const result = await Auth.signInWithPopup(provider);
     const user = result.user;
 
-    // Check if this is a new user (first sign in)
-    const isNewUser = result.additionalUserInfo?.isNewUser;
-    if (isNewUser) {
-      // FR-016: Fresh start — clear anonymous localStorage data
-      localStorage.clear();
-      console.log('[Viralify Auth] New user — localStorage cleared for fresh start.');
-    }
+    // Clear anonymous local storage data on first transition to authenticated state
+    clearAnonymousDataIfNeeded();
 
     // onAuthStateChanged will handle redirect
     return { success: true, user };
@@ -117,8 +112,8 @@ async function signInWithGoogle() {
  */
 async function signUpWithEmail(name, email, password) {
   try {
-    // FR-016: Fresh start — clear any anonymous data before creating account
-    localStorage.clear();
+    // Clear anonymous local storage data on first transition to authenticated state
+    clearAnonymousDataIfNeeded();
 
     // Create the user account
     const result = await Auth.createUserWithEmailAndPassword(email, password);
@@ -147,6 +142,10 @@ async function signUpWithEmail(name, email, password) {
 async function signInWithEmail(email, password) {
   try {
     const result = await Auth.signInWithEmailAndPassword(email, password);
+    
+    // Clear anonymous local storage data on first transition to authenticated state
+    clearAnonymousDataIfNeeded();
+    
     // onAuthStateChanged handles routing
     return { success: true, user: result.user };
   } catch (err) {
@@ -186,9 +185,21 @@ async function resendVerification() {
 }
 
 /**
+ * Helper to clear anonymous local storage data on first login/signup
+ */
+function clearAnonymousDataIfNeeded() {
+  if (!localStorage.getItem('viralify_authenticated')) {
+    localStorage.clear();
+    localStorage.setItem('viralify_authenticated', 'true');
+    console.log('[Viralify Auth] Transitioning from anonymous — localStorage cleared for fresh start.');
+  }
+}
+
+/**
  * Sign out the current user and redirect to auth page
  */
 async function doSignOut() {
+  if (!window.FIREBASE_READY) return;
   try {
     await Auth.signOut();
     console.log('[Viralify Auth] User signed out.');
