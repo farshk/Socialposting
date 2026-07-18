@@ -9,3 +9,17 @@ const FIREBASE_CONFIG = {
   messagingSenderId: 'YOUR_SENDER_ID',
   appId: 'YOUR_APP_ID'
 };
+
+window.FIREBASE_READY = false;
+
+if (typeof firebase !== 'undefined' && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey !== 'YOUR_API_KEY') {
+  try {
+    if (firebase.apps.length === 0) {
+      firebase.initializeApp(FIREBASE_CONFIG);
+    }
+    window.FIREBASE_READY = true;
+    console.log('[Viralify] Firebase initialized globally.');
+  } catch (err) {
+    console.error('[Viralify] Global Firebase initialization failed:', err);
+  }
+}

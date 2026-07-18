@@ -29,8 +29,10 @@ window.FIREBASE_READY = false;
   }
 
   try {
-    // Initialize Firebase App (compat SDK)
-    firebase.initializeApp(FIREBASE_CONFIG);
+    // Initialize Firebase App if not already done
+    if (firebase.apps.length === 0) {
+      firebase.initializeApp(FIREBASE_CONFIG);
+    }
 
     // Get Auth instance with persistent session (Firebase SDK default)
     window.Auth = firebase.auth();
