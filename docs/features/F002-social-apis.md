@@ -102,10 +102,10 @@ Why these 7 platforms matter:
 | FR-001 | System must implement YouTube (Google) OAuth 2.0 flow, requesting YouTube Data API v3 upload scopes. | Must Have |
 | FR-002 | System must implement Instagram Graph API OAuth flow for Professional/Creator accounts. | Must Have |
 | FR-003 | System must implement TikTok Direct Post API OAuth flow. | Must Have |
-| FR-004 | System must implement Facebook Graph API OAuth flow to retrieve Page Access Tokens. | Must Have |
+| FR-004 | System must implement Facebook Graph API OAuth flow to retrieve Page Access Tokens, requesting `pages_manage_posts`, `pages_read_engagement`, and `pages_show_list` scopes. | Must Have |
 | FR-005 | System must implement X (Twitter) OAuth 2.0 (PKCE) flow. | Must Have |
 | FR-006 | System must implement Pinterest API v5 OAuth flow. | Must Have |
-| FR-007 | System must implement LinkedIn API v2 OAuth flow with `w_member_social` or equivalent scopes. | Must Have |
+| FR-007 | System must implement LinkedIn API v2 OAuth flow with both `w_member_social` (personal profiles) and `w_organization_social` (company pages) scopes. | Must Have |
 
 ### 4.2 Token Management
 | ID | Requirement | Priority |
@@ -113,7 +113,7 @@ Why these 7 platforms matter:
 | FR-008 | Node.js backend must handle all token exchanges; `client_secret` must never be exposed to the frontend. | Critical |
 | FR-009 | Access tokens and refresh tokens must be stored securely (encrypted if in database, or secure HTTP-only sessions). | Critical |
 | FR-010 | Backend must automatically use refresh tokens to obtain new access tokens before API calls if the current token is expired. | Must Have |
-| FR-011 | If a refresh token is invalid or expired, the system must prompt the user to re-authenticate the platform. | Must Have |
+| FR-011 | If a refresh token is invalid or expired (e.g. revoked by user), the system must prompt the user to re-authenticate the platform. | Must Have |
 | FR-012 | Users must be able to disconnect a platform, which deletes the tokens from the backend and revokes them on the platform. | Must Have |
 | FR-013 | The frontend Accounts view must show real connection status based on token validity, replacing mock state. | Must Have |
 | FR-014 | Backend must associate OAuth tokens with the authenticated Firebase User ID. | Must Have |
@@ -123,7 +123,7 @@ Why these 7 platforms matter:
 |---|---|---|
 | FR-015 | For platforms requiring public video URLs (YouTube, TikTok, Pinterest), the frontend must first upload the video to Firebase Storage. | Must Have |
 | FR-016 | System must generate a temporary signed/public URL from Firebase Storage to pass to platform APIs. | Must Have |
-| FR-017 | After successful API ingestion by the target platforms, the temporary video file must be deleted from Firebase Storage to save costs. | Should Have |
+| FR-017 | Regardless of publish success or failure, the system must automatically clean up the temporary video file from Firebase Storage. A maximum 24-hour Time-to-Live (TTL) or daily clean up script must guarantee no stray files persist. | Should Have |
 | FR-018 | For platforms requiring direct upload (X, Facebook, LinkedIn, Instagram), the backend must support streaming or chunked uploads from the client to the platform API. | Must Have |
 | FR-019 | System must validate video MIME types (e.g., `video/mp4`, `video/quicktime`) before upload. | Must Have |
 | FR-020 | System must enforce platform-specific maximum file size limits during the upload phase. | Must Have |
@@ -136,6 +136,8 @@ Why these 7 platforms matter:
 | FR-023 | System must capture the platform-specific post ID returned by each API upon successful publication. | Must Have |
 | FR-024 | If a post fails on one platform but succeeds on others, the system must record partial success and clearly show which platform failed with the error message. | Must Have |
 | FR-025 | Published posts in the Dashboard must link directly to the live post on the respective platform using the returned post ID. | Should Have |
+| FR-026 | Backend must implement retry policies with exponential backoff for transient errors (5xx, timeouts) up to 3 retries, distinguishing rate-limited (retryable) from quota-exceeded (fatal) states. | Must Have |
+| FR-027 | Backend must handle long-running uploads asynchronously (e.g. respond with a job ID and run execution in a worker queue) to avoid HTTP timeout limits on serverless environments. | Must Have |
 
 ---
 
@@ -146,15 +148,15 @@ Why these 7 platforms matter:
 | AC-001 | GIVEN a user wants to connect YouTube, WHEN they click Connect, THEN they are redirected to Google OAuth and return with a connected status. | FR-001 |
 | AC-002 | GIVEN a user connects Instagram, WHEN they complete OAuth, THEN their Professional account is linked. | FR-002 |
 | AC-003 | GIVEN a user connects TikTok, WHEN authorized, THEN Viralify receives publishing scopes. | FR-003 |
-| AC-004 | GIVEN a user connects Facebook, WHEN authorized, THEN they can select which Page to connect. | FR-004 |
+| AC-004 | GIVEN a user connects Facebook, WHEN authorized, THEN they can select which Page to connect from the page list. | FR-004 |
 | AC-005 | GIVEN a user connects X, WHEN authorized via PKCE, THEN their connection is saved. | FR-005 |
 | AC-006 | GIVEN a user connects Pinterest, WHEN authorized, THEN they can fetch their boards. | FR-006 |
-| AC-007 | GIVEN a user connects LinkedIn, WHEN authorized, THEN their profile is ready for UGC posting. | FR-007 |
+| AC-007 | GIVEN a user connects LinkedIn Company Page, WHEN authorized, THEN their profile is ready for organization publishing. | FR-007 |
 | AC-008 | GIVEN an expired access token, WHEN a publish request is made, THEN the backend transparently refreshes the token. | FR-010 |
 | AC-009 | GIVEN a revoked access token, WHEN a publish request fails, THEN the UI shows a "Reconnect Required" state. | FR-011 |
 | AC-010 | GIVEN a user clicks Disconnect for a platform, WHEN confirmed, THEN the tokens are deleted from the backend. | FR-012 |
 | AC-011 | GIVEN a user publishes to YouTube, WHEN the flow starts, THEN the video is uploaded to Firebase Storage and a public URL is generated. | FR-015, FR-016 |
-| AC-012 | GIVEN the Firebase upload completes, WHEN the API consumes the URL, THEN the video is deleted from Firebase within 24 hours. | FR-017 |
+| AC-012 | GIVEN the Firebase upload completes, WHEN the publish job finishes (success or failure), THEN the video is deleted from Firebase within 24 hours. | FR-017 |
 | AC-013 | GIVEN a user publishes to X, WHEN uploading, THEN the backend uses X's chunked media upload API. | FR-018 |
 | AC-014 | GIVEN a user selects a `.pdf` file, WHEN uploading, THEN the system rejects it as an invalid MIME type. | FR-019 |
 | AC-015 | GIVEN a 2GB file for TikTok (limit 500MB), WHEN selected, THEN the UI rejects the file before upload begins. | FR-020 |
@@ -163,6 +165,8 @@ Why these 7 platforms matter:
 | AC-018 | GIVEN a successful post to Facebook, WHEN the response is received, THEN the Facebook Post ID is stored in the database. | FR-023 |
 | AC-019 | GIVEN a post succeeds on X but fails on LinkedIn due to rate limits, WHEN completed, THEN the UI shows X as Success and LinkedIn as Failed. | FR-024 |
 | AC-020 | GIVEN a published post on the dashboard, WHEN the user clicks the platform icon, THEN it opens the live post in a new tab. | FR-025 |
+| AC-021 | GIVEN a transient 503 platform error, WHEN the backend publishes, THEN it retries up to 3 times before failing. | FR-026 |
+| AC-022 | GIVEN a video file upload, WHEN processed by the backend proxy, THEN the server responds immediately with a job ID and runs the upload asynchronously. | FR-027 |
 
 ---
 
@@ -332,13 +336,42 @@ sequenceDiagram
 
 > Completed by: BA Agent | Date: 2026-07-19
 
-- [ ] All user stories have clear acceptance criteria
-- [ ] Functional requirements are complete and unambiguous
-- [ ] Non-functional requirements are measurable
-- [ ] UI/UX requirements match existing design system
-- [ ] Technical approach is feasible within current stack
-- [ ] All dependencies identified
-- [ ] All risks documented with mitigations
-- [ ] Open questions flagged for stakeholder input
-- [ ] No conflicting requirements detected
-- [ ] Feature is achievable within Sprint 3 scope
+- [x] All user stories have clear acceptance criteria - Yes, effectively mapped to FRs.
+- [~] Functional requirements are complete and unambiguous - Missing upload retries for 5xx errors, explicit error state mapping for quota exhaustion, and handling storage cleanup on publish failure.
+- [x] Non-functional requirements are measurable - Yes, timeouts and max retries specified.
+- [x] UI/UX requirements match existing design system - Fits into the F000 dashboard architecture.
+- [~] Technical approach is feasible within current stack - Yes, but Node.js proxying large video uploads may hit standard HTTP timeouts (e.g., 30s-60s) on many hosting platforms.
+- [x] All dependencies identified - Identified successfully.
+- [~] All risks documented with mitigations - Missing risk of temporary storage cost explosion on failed posts and refresh token expiration during scheduled runs.
+- [x] Open questions flagged for stakeholder input - Yes, 3 open questions documented.
+- [x] No conflicting requirements detected - Consistent.
+- [x] Feature is achievable within Sprint 3 scope - Achievable, though aggressive for 7 platform integrations.
+
+---
+
+## 14. BA Review
+**Date:** 2026-07-19
+**Reviewer:** Senior BA Agent
+
+**Executive Summary:**
+The F002 BRD provides a comprehensive and well-structured plan for implementing real OAuth and publishing flows for the 7 target social media platforms. While the foundational architecture using a Node.js proxy and Firebase Storage is solid, there are critical gaps concerning token rotation edge cases, transient network failures, and storage cleanup.
+
+**Findings by Section:**
+- **4.1 OAuth & Scopes:** For Facebook (FR-004), the `pages_show_list` scope is missing to allow users to fetch and select which page to connect (AC-004). For LinkedIn (FR-007), `w_organization_social` or similar is missing for Company Pages mentioned in US-013.
+- **4.2 Token Management:** FR-010 and AC-008 cover token refresh, but lack behavior definitions for when refresh tokens themselves expire or are revoked during background/scheduled processing.
+- **4.3 Media Uploads:** FR-017 specifies deleting Firebase temporary videos upon successful ingestion, but fails to account for deletion when publish jobs permanently fail, risking unbounded storage costs.
+- **4.4 Status Tracking:** Doesn't clearly define how API Quota Exceeded errors (e.g., YouTube) are surfaced to the user versus standard rate limits (NFR-003 / TC-025).
+
+**Gap Analysis:**
+1. **Scope Deficit:** Missing scopes for Facebook page selection and LinkedIn Company Page publishing.
+2. **Storage Cleanup Risk:** No requirement dictates cleaning up Firebase Storage if a post permanently fails.
+3. **Resilience Missing:** Missing functional requirements for general upload retries on 5xx platform errors or network timeouts (only 429s are currently covered).
+4. **Proxy Timeout:** Express backend proxying huge video uploads may hit platform proxy timeout limits if not handled asynchronously.
+
+**Recommendations:**
+1. **Update Scopes:** Add `pages_show_list` to Facebook scopes and confirm LinkedIn Company Page scopes (`w_organization_social`).
+2. **Enhance Cleanup Logic:** Update FR-017 to mandate a 24-hour TTL/cron job on Firebase Storage to purge ALL temporary videos automatically, regardless of publish success or failure.
+3. **Define Quota/Error States:** Add an FR defining distinct UI/Backend handling for "Rate Limited" (retryable) vs "Quota Exceeded" (fatal, prompt user).
+4. **Async Proxy Design:** Ensure the technical architecture explicitly notes handling long uploads asynchronously (or chunked via the frontend where possible) to avoid standard HTTP timeouts.
+
+**Verdict:** **Approved with Changes**
