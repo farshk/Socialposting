@@ -137,6 +137,7 @@ A single command center for video content creators to manage their entire social
 │   └── app.js
 └── docs/
     ├── MASTER.md           ← This file
+    ├── APIS.md             ← API Directory & Interface Catalog
     └── features/
         └── F001-auth.md
 ```
@@ -203,3 +204,6 @@ All agents working on this project MUST:
 | 2026-07-07 | BA Agent | F001-auth.md reviewed — Verdict: Approved with Changes; 19 gaps identified |
 | 2026-07-07 | Main Agent | F001-auth.md updated with stakeholder decisions (OQ-1–5 closed); FR-016–019 and AC-012–018 added; NFR-004 resolved; BRD finalized for dev handoff |
 | 2026-07-08 | QA Agent | F001 static code analysis complete — 90 TCs evaluated; 85 PASS, 0 FAIL, 5 WARN; Verdict: ⚠️ Pass with Issues; 3 Medium bugs (BUG-001–003) and 2 Low bugs (BUG-004–005) filed; module cleared for Firebase config and UAT; NOT cleared for public deployment until BUG-001 and BUG-003 resolved |
+| 2026-07-10 | Main Agent | Resolved bugs BUG-001 (doSignOut safety guard), BUG-002 (transition-only localStorage clear), and BUG-003 (Terms link accessibility) in auth.html and js/auth.js |
+| 2026-07-18 | Main Agent | Fixed index.html auth gate bypass by moving Firebase App initialization globally into js/firebase-config.js |
+| 2026-07-19 | Main Agent | Auth module smoke tested successfully; created docs/APIS.md cataloging all helper classes and module interfaces for reuse |
