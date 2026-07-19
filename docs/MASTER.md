@@ -34,7 +34,8 @@ A single command center for video content creators to manage their entire social
 | Data (Phase 1) | LocalStorage | Browser-side persistence |
 | AI Content | Smart template engine | Pattern-based generation, no API key required |
 | Auth (Phase 2) | Google OAuth 2.0 + Email/Password | Firebase Auth or Supabase |
-| Backend (Planned) | Node.js + Express | For real API integrations |
+| Backend | Node.js + Express | OAuth proxy backend for secure client_secret handling |
+| Video Hosting | Firebase Storage | Temporary public video URL hosting for API uploads |
 | Hosting (Planned) | Vercel / Netlify | Static hosting for frontend |
 | Database (Planned) | PostgreSQL / Supabase | For multi-user data persistence |
 
@@ -58,7 +59,7 @@ A single command center for video content creators to manage their entire social
 |---|---|---|---|---|
 | F000 | Core App Shell (Dashboard, Composer, Scheduler, AI Studio, Accounts) | ✅ Complete | — | Sprint 1 |
 | F001 | User Authentication (Google OAuth + Email/Password) | 🟡 BA Approved — Dev Ready | [F001-auth.md](./features/F001-auth.md) | Sprint 2 |
-| F002 | Real Social Media API Integrations | 📋 Planned | — | Sprint 3 |
+| F002 | Real Social Media API Integrations | 🔵 In Requirements | [F002-social-apis.md](./features/F002-social-apis.md) | Sprint 3 |
 | F003 | Analytics Dashboard | 📋 Planned | — | Sprint 4 |
 | F004 | Bulk Scheduling (CSV Import) | 📋 Planned | — | Sprint 5 |
 | F005 | AI Thumbnail Generator | 📋 Planned | — | Sprint 6 |
@@ -138,8 +139,11 @@ A single command center for video content creators to manage their entire social
 └── docs/
     ├── MASTER.md           ← This file
     ├── APIS.md             ← API Directory & Interface Catalog
+    ├── qa/
+    │   └── F002-social-apis-test-report.md
     └── features/
-        └── F001-auth.md
+        ├── F001-auth.md
+        └── F002-social-apis.md
 ```
 
 ---
@@ -207,3 +211,4 @@ All agents working on this project MUST:
 | 2026-07-10 | Main Agent | Resolved bugs BUG-001 (doSignOut safety guard), BUG-002 (transition-only localStorage clear), and BUG-003 (Terms link accessibility) in auth.html and js/auth.js |
 | 2026-07-18 | Main Agent | Fixed index.html auth gate bypass by moving Firebase App initialization globally into js/firebase-config.js |
 | 2026-07-19 | Main Agent | Auth module smoke tested successfully; created docs/APIS.md cataloging all helper classes and module interfaces for reuse |
+| 2026-07-19 | BA Agent | F002 requirements authored — F002-social-apis.md BRD created with 25+ FRs, 20+ ACs, 7-platform API specs; F002-social-apis-test-report.md created with 70+ test cases; MASTER.md updated |
