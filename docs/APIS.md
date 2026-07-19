@@ -227,3 +227,45 @@ The central app execution shell, controls UI page routing and global modal trigg
   * `type` (string) — `'success'`, `'error'`, `'info'`
   * `duration` (number) — Display time in milliseconds (defaults to 3500)
 * **Returns:** `void`
+
+---
+
+## 8. YouTube Backend API (`server/routes/youtube.js`)
+
+Provides OAuth 2.0 and upload capabilities for YouTube via a Node.js Express server.
+
+### `GET /api/youtube/auth`
+* **Description:** Generates Google OAuth 2.0 authorization URL.
+* **Auth Requirement:** Requires Firebase ID Token in `Authorization: Bearer <token>` header.
+* **Returns:** `{ success: true, authUrl: string }`
+
+### `GET /api/youtube/callback`
+* **Description:** OAuth callback endpoint. Exchanges authorization code for tokens and saves them to Firestore. Redirects to frontend.
+* **Auth Requirement:** None (Google redirects here).
+* **Returns:** `Redirects to ${FRONTEND_URL}/index.html?platform=youtube&status=connected|error`
+
+### `GET /api/youtube/status`
+* **Description:** Checks if the user is connected to YouTube. Returns channel info and scopes if connected.
+* **Auth Requirement:** Requires Firebase ID Token.
+* **Returns:** `{ success: true, connected: boolean, channelName?: string, channelId?: string, scope?: string }`
+
+### `POST /api/youtube/refresh`
+* **Description:** Explicitly refreshes the YouTube access token using the refresh token stored in Firestore.
+* **Auth Requirement:** Requires Firebase ID Token.
+* **Returns:** `{ success: true }`
+
+### `DELETE /api/youtube/disconnect`
+* **Description:** Revokes the Google OAuth token and deletes tokens from Firestore.
+* **Auth Requirement:** Requires Firebase ID Token.
+* **Returns:** `{ success: true }`
+
+### `POST /api/youtube/upload`
+* **Description:** Initiates a resumable upload from a Firebase Storage URL to YouTube Data API v3.
+* **Auth Requirement:** Requires Firebase ID Token.
+* **Request Body:** `{ firebaseStorageUrl: string, title: string, description: string, tags: string[], privacyStatus: string }`
+* **Returns:** `{ success: true, videoId: string, videoUrl: string }`
+
+### `GET /api/jobs/:jobId/status`
+* **Description:** Stub endpoint for future async processing tracking.
+* **Auth Requirement:** Requires Firebase ID Token.
+* **Returns:** `{ success: true, jobId: string, status: string, platform: string }`

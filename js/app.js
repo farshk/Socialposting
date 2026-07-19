@@ -1043,13 +1043,13 @@ const AccountsPage = {
           <button class="btn btn-ghost btn-sm flex-1" onclick="AccountsPage.viewPosts('${acc.platformId}')">
             <i class="fas fa-chart-bar"></i> View Posts
           </button>
-          <button class="btn btn-danger btn-sm" onclick="AccountsPage.disconnect('${acc.platformId}')">
+          <button class="btn btn-danger btn-sm" id="${acc.platformId}-disconnect-btn" onclick="AccountsPage.disconnect('${acc.platformId}')">
             <i class="fas fa-unlink"></i>
           </button>
         </div>
       ` : `
         <div style="font-size:13px;color:var(--text-muted);">Connect your ${p.name} account to start posting.</div>
-        <button class="btn btn-primary btn-sm" onclick="AccountsPage.connect('${acc.platformId}')">
+        <button class="btn btn-primary btn-sm" id="${acc.platformId}-connect-btn" onclick="AccountsPage.connect('${acc.platformId}')">
           <i class="fas fa-link"></i> Connect ${p.name}
         </button>
       `;
