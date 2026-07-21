@@ -1074,6 +1074,11 @@ const AccountsPage = {
   },
 
   connect(platformId) {
+    if (platformId === 'youtube' && typeof YouTube !== 'undefined') {
+      YouTube.connect();
+      return;
+    }
+
     const p = PLATFORMS[platformId];
     App.openModal(`Connect ${p.name}`, `
       <div style="text-align:center;padding:20px 0;">
@@ -1094,6 +1099,12 @@ const AccountsPage = {
   },
 
   simulateConnect(platformId) {
+    if (platformId === 'youtube' && typeof YouTube !== 'undefined') {
+      App.closeModal();
+      YouTube.connect();
+      return;
+    }
+
     const acc = Data.getAccount(platformId) || { platformId };
     acc.connected = true;
     acc.username = `@viralify_${platformId}`;
@@ -1125,6 +1136,12 @@ const AccountsPage = {
   },
 
   confirmDisconnect(platformId) {
+    if (platformId === 'youtube' && typeof YouTube !== 'undefined') {
+      App.closeModal();
+      YouTube.disconnect();
+      return;
+    }
+
     const acc = Data.getAccount(platformId);
     if (acc) {
       acc.connected = false;
