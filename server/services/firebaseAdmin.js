@@ -1,12 +1,16 @@
-const admin = require('firebase-admin');
+const { initializeApp, getApps, cert } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
+const { getStorage } = require('firebase-admin/storage');
+const { getAuth } = require('firebase-admin/auth');
 
-if (!admin.apps.length) {
+let firebaseApp;
+
+if (getApps().length === 0) {
   try {
-    admin.initializeApp({
-      credential: admin.credential.cert({
+    firebaseApp = initializeApp({
+      credential: cert({
         projectId: process.env.FIREBASE_PROJECT_ID,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        // Handle escaped newlines in private key
         privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined
       }),
       storageBucket: process.env.FIREBASE_STORAGE_BUCKET
@@ -15,9 +19,16 @@ if (!admin.apps.length) {
   } catch (err) {
     console.error('Firebase Admin SDK initialization error:', err.message);
   }
+} else {
+  firebaseApp = getApps()[0];
 }
 
-const db = admin.firestore();
-const storage = admin.storage().bucket();
+const db = getFirestore(firebaseApp);
+const storage = getStorage(firebaseApp).bucket();
+const auth = getAuth(firebaseApp);
 
-module.exports = { admin, db, storage };
+const adminWrapper = {
+  auth: () => auth
+};
+
+module.exports = { admin: adminWrapper, db, storage, auth };
