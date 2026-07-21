@@ -8,7 +8,10 @@ const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: (origin, callback) => {
+    // Allow local file:// URLs, null origin, and local server requests
+    return callback(null, true);
+  },
   credentials: true
 }));
 app.use(express.json());
