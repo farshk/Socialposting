@@ -29,15 +29,21 @@ const YouTube = (function() {
   }
 
   function updateUI(data) {
-    const connectBtn = document.getElementById('youtube-connect-btn');
-    const disconnectBtn = document.getElementById('youtube-disconnect-btn');
-    
-    if (data && data.connected) {
-      if (connectBtn) connectBtn.style.display = 'none';
-      if (disconnectBtn) disconnectBtn.style.display = 'inline-block';
+    const isConnected = data && data.connected;
+    const acc = Data.getAccount('youtube') || { platformId: 'youtube' };
+    acc.connected = isConnected;
+    if (isConnected) {
+      acc.username = data.channelName || 'YouTube Channel';
+      if (data.followers) acc.followers = data.followers;
     } else {
-      if (connectBtn) connectBtn.style.display = 'inline-block';
-      if (disconnectBtn) disconnectBtn.style.display = 'none';
+      acc.username = '';
+      acc.followers = 0;
+      acc.posts = 0;
+    }
+    Data.saveAccount(acc);
+
+    if (typeof AccountsPage !== 'undefined' && typeof AppState !== 'undefined' && AppState.currentPage === 'accounts') {
+      AccountsPage.render();
     }
   }
 

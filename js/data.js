@@ -93,6 +93,21 @@ const Data = {
     }
     if (!localStorage.getItem(ACCOUNTS_KEY)) {
       localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(DEFAULT_ACCOUNTS));
+    } else {
+      // Auto-sanitize legacy mock YouTube account from prior browser sessions
+      try {
+        const accounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || '[]');
+        const yt = accounts.find(a => a.platformId === 'youtube');
+        if (yt && (yt.username === '@farrukhcreates' || yt.username === '@viralify_youtube')) {
+          yt.connected = false;
+          yt.username = '';
+          yt.followers = 0;
+          yt.posts = 0;
+          localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+        }
+      } catch (e) {
+        console.error('Account sanitization error:', e);
+      }
     }
   },
 
