@@ -57,10 +57,12 @@ const YouTube = (function() {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
+      console.log('[YouTube.connect] API response:', res.status, data);
       if (data.success && data.authUrl) {
         window.location.href = data.authUrl;
       } else {
-        App.toast('Failed to get YouTube Auth URL', 'error');
+        const msg = data.error || data.message || 'Failed to get YouTube Auth URL';
+        App.toast(`YouTube Error: ${msg}`, 'error');
       }
     } catch (err) {
       console.error('YouTube connect failed:', err);
