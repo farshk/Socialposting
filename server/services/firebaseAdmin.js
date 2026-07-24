@@ -10,9 +10,13 @@ let storage = null;
 let auth = null;
 
 function getPrivateKey() {
-  const key = process.env.FIREBASE_PRIVATE_KEY;
+  let key = process.env.FIREBASE_PRIVATE_KEY;
   if (!key) return undefined;
-  return key.includes('\\n') ? key.replace(/\\n/g, '\n') : key;
+  key = key.trim();
+  if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
+    key = key.slice(1, -1);
+  }
+  return key.replace(/\\n/g, '\n');
 }
 
 if (getApps().length === 0) {
