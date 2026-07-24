@@ -11,12 +11,16 @@ async function verifyAuth(req, res, next) {
 
   const idToken = authHeader.split('Bearer ')[1];
   try {
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const firebaseAuth = admin.auth();
+    if (!firebaseAuth) {
+      return res.status(500).json({ success: false, error: 'Firebase Admin Auth service is not configured. Please check environment variables on Vercel.', code: 'FIREBASE_NOT_CONFIGURED' });
+    }
+    const decodedToken = await firebaseAuth.verifyIdToken(idToken);
     req.uid = decodedToken.uid;
     next();
   } catch (error) {
     console.error('Auth verification failed:', error.message);
-    return res.status(401).json({ success: false, error: 'Unauthorized: Invalid token', code: 'UNAUTHORIZED_INVALID' });
+    return res.status(401).json({ success: false, error: 'Unauthorized: Invalid token (' + error.message + ')', code: 'UNAUTHORIZED_INVALID' });
   }
 }
 

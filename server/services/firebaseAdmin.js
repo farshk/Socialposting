@@ -4,29 +4,48 @@ const { getFirestore } = require('firebase-admin/firestore');
 const { getStorage } = require('firebase-admin/storage');
 const { getAuth } = require('firebase-admin/auth');
 
-let firebaseApp;
+let firebaseApp = null;
+let db = null;
+let storage = null;
+let auth = null;
+
+function getPrivateKey() {
+  const key = process.env.FIREBASE_PRIVATE_KEY;
+  if (!key) return undefined;
+  return key.includes('\\n') ? key.replace(/\\n/g, '\n') : key;
+}
 
 if (getApps().length === 0) {
-  try {
-    firebaseApp = initializeApp({
-      credential: cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined
-      }),
-      storageBucket: process.env.FIREBASE_STORAGE_BUCKET
-    });
-    console.log('Firebase Admin SDK initialized successfully.');
-  } catch (err) {
-    console.error('Firebase Admin SDK initialization error:', err.message);
+  if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+    try {
+      firebaseApp = initializeApp({
+        credential: cert({
+          projectId: process.env.FIREBASE_PROJECT_ID,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+          privateKey: getPrivateKey()
+        }),
+        storageBucket: process.env.FIREBASE_STORAGE_BUCKET
+      });
+      console.log('Firebase Admin SDK initialized successfully.');
+    } catch (err) {
+      console.error('Firebase Admin SDK initialization error:', err.message);
+    }
+  } else {
+    console.warn('Firebase Admin SDK: Environment variables missing or unpopulated.');
   }
 } else {
   firebaseApp = getApps()[0];
 }
 
-const db = getFirestore(firebaseApp);
-const storage = getStorage(firebaseApp).bucket();
-const auth = getAuth(firebaseApp);
+if (firebaseApp) {
+  try {
+    db = getFirestore(firebaseApp);
+    storage = getStorage(firebaseApp).bucket();
+    auth = getAuth(firebaseApp);
+  } catch (err) {
+    console.error('Firebase Admin services binding error:', err.message);
+  }
+}
 
 const adminWrapper = {
   auth: () => auth

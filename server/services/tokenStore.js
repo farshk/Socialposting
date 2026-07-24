@@ -4,6 +4,8 @@ const { db } = require('./firebaseAdmin');
  * Stores tokens for a specific user and platform
  */
 async function saveTokens(firebaseUid, platformId, tokens) {
+  const { db } = require('./firebaseAdmin');
+  if (!db) throw new Error('Firestore database is not configured. Check environment variables.');
   const docRef = db.doc(`users/${firebaseUid}/platforms/${platformId}`);
   await docRef.set(tokens, { merge: true });
 }
@@ -12,6 +14,8 @@ async function saveTokens(firebaseUid, platformId, tokens) {
  * Retrieves tokens for a specific user and platform
  */
 async function getTokens(firebaseUid, platformId) {
+  const { db } = require('./firebaseAdmin');
+  if (!db) return null;
   const docRef = db.doc(`users/${firebaseUid}/platforms/${platformId}`);
   const doc = await docRef.get();
   if (!doc.exists) return null;
@@ -22,6 +26,8 @@ async function getTokens(firebaseUid, platformId) {
  * Deletes tokens for a specific user and platform
  */
 async function deleteTokens(firebaseUid, platformId) {
+  const { db } = require('./firebaseAdmin');
+  if (!db) return;
   const docRef = db.doc(`users/${firebaseUid}/platforms/${platformId}`);
   await docRef.delete();
 }
