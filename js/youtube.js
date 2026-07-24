@@ -4,7 +4,10 @@
 // =============================================
 
 const YouTube = (function() {
-  const BACKEND_URL = 'http://localhost:3001'; // Update to match backend
+  // Dynamically compute backend URL (localhost vs production origin)
+  const BACKEND_URL = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:3001'
+    : window.location.origin;
 
   // Helper to get Firebase ID Token
   async function getFirebaseIdToken() {
