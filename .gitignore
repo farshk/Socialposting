@@ -17,7 +17,8 @@ Thumbs.db
 *.log
 
 # Firebase — real API keys (never commit)
-js/firebase-config.js
+# NOTE: firebase-config.js IS committed - Firebase frontend API keys are public by design
+# The sensitive credential is the Service Account key which is in server/.env (gitignored)
 
 # Node (if added later)
 node_modules/
