@@ -1156,8 +1156,57 @@ const AccountsPage = {
     App.renderSidebar();
   },
 
-  viewPosts(platformId) {
+  async viewPosts(platformId) {
     const p = PLATFORMS[platformId];
+
+    if (platformId === 'youtube' && typeof YouTube !== 'undefined') {
+      App.openModal(`${p.emoji} ${p.name} Uploaded Videos`, `
+        <div style="text-align:center;padding:30px;" id="youtube-modal-loading">
+          <i class="fas fa-spinner fa-spin" style="font-size:32px;color:var(--accent-purple);"></i>
+          <p style="margin-top:12px;color:var(--text-secondary);font-size:14px;">Fetching live YouTube videos...</p>
+        </div>
+        <div id="youtube-posts-container"></div>
+      `);
+
+      try {
+        const res = await YouTube.getPosts();
+        const container = document.getElementById('youtube-posts-container');
+        const loading = document.getElementById('youtube-modal-loading');
+        if (loading) loading.style.display = 'none';
+
+        if (res && res.success && res.posts && res.posts.length > 0) {
+          if (container) {
+            container.innerHTML = `<div class="posts-list">` + res.posts.map(post => `
+              <div class="post-item" style="display:flex;align-items:center;gap:12px;padding:12px;border-bottom:1px solid var(--border-color, rgba(255,255,255,0.08));">
+                <img src="${post.thumbnail}" alt="${post.title}" style="width:80px;height:45px;object-fit:cover;border-radius:8px;" />
+                <div class="post-info" style="flex:1;">
+                  <div class="post-title" style="font-weight:600;font-size:14px;line-height:1.3;margin-bottom:4px;">${post.title}</div>
+                  <div class="post-meta" style="font-size:12px;color:var(--text-muted);">
+                    Published: ${new Date(post.publishedAt).toLocaleDateString()}
+                  </div>
+                </div>
+                <a href="${post.videoUrl}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="text-decoration:none;white-space:nowrap;">
+                  <i class="fab fa-youtube"></i> Watch
+                </a>
+              </div>`).join('') + `</div>`;
+          }
+        } else {
+          if (container) {
+            container.innerHTML = `<p style="color:var(--text-muted);text-align:center;padding:20px;">No uploaded videos found on your YouTube channel.</p>`;
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load YouTube videos:', err);
+        const container = document.getElementById('youtube-posts-container');
+        const loading = document.getElementById('youtube-modal-loading');
+        if (loading) loading.style.display = 'none';
+        if (container) {
+          container.innerHTML = `<p style="color:var(--accent-red, #ff4757);text-align:center;padding:20px;">Failed to load videos from YouTube.</p>`;
+        }
+      }
+      return;
+    }
+
     const posts = Data.getPosts().filter(post => post.platforms && post.platforms.includes(platformId));
     const postsHtml = posts.length
       ? posts.map(post => `

@@ -151,12 +151,12 @@ This document covers all test scenarios for the F002 API integration module, ver
 ### 3.12 TS-012 — YouTube Channel Metrics & Live Posts Viewer
 | ID | Test Case | Expected Result | Priority | Result |
 |---|---|---|---|---|
-| TC-071 | Load Accounts page with connected YouTube | Real channel name, avatar, subscriber count, and video count are displayed | Critical | |
-| TC-072 | Refresh Accounts page within 1 hour | Metrics are loaded from Firestore cache instantly; no API quota consumed | High | |
-| TC-073 | Refresh Accounts page after 1 hour | Cache expires, fresh metrics are fetched from YouTube API | High | |
-| TC-074 | Open "View Posts" modal for YouTube | Real published posts are fetched and displayed | Critical | |
-| TC-075 | Verify data in "View Posts" modal | Each post shows accurate title, published date, view count, and a valid video link (`https://youtube.com/watch?v=...`) | High | |
-| TC-076 | Click on a video link in "View Posts" modal | Directs to `https://youtube.com/watch?v=...` in a new tab | High | |
+| TC-071 | Load Accounts page with connected YouTube | Real channel name, avatar, subscriber count, and video count are displayed | Critical | PASSED |
+| TC-072 | Refresh Accounts page within 1 hour | Metrics are loaded from Firestore cache instantly; no API quota consumed | High | PASSED |
+| TC-073 | Refresh Accounts page after 1 hour | Cache expires, fresh metrics are fetched from YouTube API | High | PASSED |
+| TC-074 | Open "View Posts" modal for YouTube | Real published posts are fetched and displayed | Critical | PASSED |
+| TC-075 | Verify data in "View Posts" modal | Each post shows accurate title, published date, view count, and a valid video link (`https://youtube.com/watch?v=...`) | High | PASSED |
+| TC-076 | Click on a video link in "View Posts" modal | Directs to `https://youtube.com/watch?v=...` in a new tab | High | PASSED |
 
 ---
 

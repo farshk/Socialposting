@@ -17,6 +17,32 @@ const YouTube = (function() {
     return await firebase.auth().currentUser.getIdToken();
   }
 
+  async function getMetrics() {
+    try {
+      const token = await getFirebaseIdToken();
+      const res = await fetch(`${BACKEND_URL}/api/youtube/metrics`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      return await res.json();
+    } catch (err) {
+      console.error('YouTube getMetrics failed:', err);
+      return { success: false };
+    }
+  }
+
+  async function getPosts() {
+    try {
+      const token = await getFirebaseIdToken();
+      const res = await fetch(`${BACKEND_URL}/api/youtube/posts`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      return await res.json();
+    } catch (err) {
+      console.error('YouTube getPosts failed:', err);
+      return { success: false, posts: [] };
+    }
+  }
+
   async function checkStatus() {
     try {
       const token = await getFirebaseIdToken();
@@ -25,6 +51,15 @@ const YouTube = (function() {
       });
       const data = await res.json();
       
+      if (data && data.connected) {
+        const metricsRes = await getMetrics();
+        if (metricsRes && metricsRes.success) {
+          data.subscriberCount = metricsRes.subscriberCount;
+          data.videoCount = metricsRes.videoCount;
+          data.channelName = metricsRes.channelName;
+        }
+      }
+
       updateUI(data);
     } catch (err) {
       console.error('YouTube status check failed:', err);
@@ -37,7 +72,8 @@ const YouTube = (function() {
     acc.connected = isConnected;
     if (isConnected) {
       acc.username = data.channelName || 'YouTube Channel';
-      if (data.followers) acc.followers = data.followers;
+      acc.followers = data.subscriberCount !== undefined ? data.subscriberCount : (acc.followers || 0);
+      acc.posts = data.videoCount !== undefined ? data.videoCount : (acc.posts || 0);
     } else {
       acc.username = '';
       acc.followers = 0;
@@ -174,6 +210,8 @@ const YouTube = (function() {
     connect,
     disconnect,
     upload,
+    getMetrics,
+    getPosts,
     getFirebaseIdToken
   };
 })();

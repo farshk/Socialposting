@@ -299,6 +299,130 @@ router.post('/upload', verifyAuth, async (req, res) => {
 });
 
 /**
+ * GET /api/youtube/metrics
+ * Fetches real channel statistics (subscriberCount, videoCount, viewCount, channelName, avatarUrl)
+ * Caches in Firestore (users/{uid}/platforms/youtube_stats) with 1-hour TTL
+ */
+router.get('/metrics', verifyAuth, async (req, res) => {
+  try {
+    const { db } = require('../services/firebaseAdmin');
+    
+    // Check 1-hour Firestore cache
+    if (db) {
+      const cacheRef = db.doc(`users/${req.uid}/platforms/youtube_stats`);
+      const cacheSnap = await cacheRef.get();
+      if (cacheSnap.exists) {
+        const cachedData = cacheSnap.data();
+        if (cachedData.lastUpdated && (Date.now() - cachedData.lastUpdated < 3600000)) {
+          return res.json({ success: true, ...cachedData, cached: true });
+        }
+      }
+    }
+
+    let tokens = await getTokens(req.uid, 'youtube');
+    if (!tokens) {
+      return res.status(400).json({ success: false, error: 'Not connected to YouTube', code: 'NOT_CONNECTED' });
+    }
+
+    if (isTokenExpired(tokens)) {
+      const refreshRes = await axios.post('https://oauth2.googleapis.com/token', {
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET,
+        refresh_token: tokens.refreshToken,
+        grant_type: 'refresh_token'
+      });
+      tokens.accessToken = refreshRes.data.access_token;
+      tokens.expiresAt = Date.now() + (refreshRes.data.expires_in * 1000);
+      await saveTokens(req.uid, 'youtube', tokens);
+    }
+
+    const channelRes = await axios.get('https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&mine=true', {
+      headers: { 'Authorization': `Bearer ${tokens.accessToken}` }
+    });
+
+    const item = channelRes.data.items?.[0];
+    if (!item) {
+      return res.status(404).json({ success: false, error: 'YouTube channel not found', code: 'CHANNEL_NOT_FOUND' });
+    }
+
+    const metrics = {
+      subscriberCount: parseInt(item.statistics.subscriberCount || '0', 10),
+      videoCount: parseInt(item.statistics.videoCount || '0', 10),
+      viewCount: parseInt(item.statistics.viewCount || '0', 10),
+      channelName: item.snippet.title || 'YouTube Channel',
+      avatarUrl: item.snippet.thumbnails?.default?.url || '',
+      lastUpdated: Date.now()
+    };
+
+    if (db) {
+      const cacheRef = db.doc(`users/${req.uid}/platforms/youtube_stats`);
+      await cacheRef.set(metrics, { merge: true });
+    }
+
+    res.json({ success: true, ...metrics, cached: false });
+  } catch (error) {
+    console.error('YouTube metrics error:', error.response?.data || error.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch YouTube metrics', code: 'METRICS_FAILED' });
+  }
+});
+
+/**
+ * GET /api/youtube/posts
+ * Fetches recent uploaded videos from YouTube Data API v3
+ */
+router.get('/posts', verifyAuth, async (req, res) => {
+  try {
+    let tokens = await getTokens(req.uid, 'youtube');
+    if (!tokens) {
+      return res.status(400).json({ success: false, error: 'Not connected to YouTube', code: 'NOT_CONNECTED' });
+    }
+
+    if (isTokenExpired(tokens)) {
+      const refreshRes = await axios.post('https://oauth2.googleapis.com/token', {
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET,
+        refresh_token: tokens.refreshToken,
+        grant_type: 'refresh_token'
+      });
+      tokens.accessToken = refreshRes.data.access_token;
+      tokens.expiresAt = Date.now() + (refreshRes.data.expires_in * 1000);
+      await saveTokens(req.uid, 'youtube', tokens);
+    }
+
+    const channelRes = await axios.get('https://www.googleapis.com/youtube/v3/channels?part=contentDetails&mine=true', {
+      headers: { 'Authorization': `Bearer ${tokens.accessToken}` }
+    });
+
+    const uploadsPlaylistId = channelRes.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+    if (!uploadsPlaylistId) {
+      return res.json({ success: true, posts: [] });
+    }
+
+    const playlistRes = await axios.get(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=10`, {
+      headers: { 'Authorization': `Bearer ${tokens.accessToken}` }
+    });
+
+    const posts = (playlistRes.data.items || []).map(item => {
+      const videoId = item.snippet.resourceId?.videoId;
+      return {
+        id: videoId || item.id,
+        title: item.snippet.title,
+        description: item.snippet.description,
+        publishedAt: item.snippet.publishedAt,
+        thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || '',
+        videoUrl: videoId ? `https://www.youtube.com/watch?v=${videoId}` : '#',
+        platformId: 'youtube'
+      };
+    });
+
+    res.json({ success: true, posts });
+  } catch (error) {
+    console.error('YouTube posts error:', error.response?.data || error.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch YouTube posts', code: 'POSTS_FAILED' });
+  }
+});
+
+/**
  * GET /api/jobs/:jobId/status
  * Stub for future async processing
  */

@@ -265,6 +265,16 @@ Provides OAuth 2.0 and upload capabilities for YouTube via a Node.js Express ser
 * **Request Body:** `{ firebaseStorageUrl: string, title: string, description: string, tags: string[], privacyStatus: string }`
 * **Returns:** `{ success: true, videoId: string, videoUrl: string }`
 
+### `GET /api/youtube/metrics`
+* **Description:** Fetches real channel statistics (subscribers, videos, views). Caches results in Firestore with 1-hour TTL.
+* **Auth Requirement:** Requires Firebase ID Token.
+* **Returns:** `{ success: true, subscriberCount: number, videoCount: number, viewCount: number, channelName: string, avatarUrl: string, cached: boolean }`
+
+### `GET /api/youtube/posts`
+* **Description:** Fetches recent uploaded videos directly from the user's YouTube uploads playlist.
+* **Auth Requirement:** Requires Firebase ID Token.
+* **Returns:** `{ success: true, posts: Array<{ id: string, title: string, description: string, publishedAt: string, thumbnail: string, videoUrl: string, platformId: string }> }`
+
 ### `GET /api/jobs/:jobId/status`
 * **Description:** Stub endpoint for future async processing tracking.
 * **Auth Requirement:** Requires Firebase ID Token.
