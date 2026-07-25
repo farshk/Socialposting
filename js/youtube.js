@@ -128,17 +128,29 @@ const YouTube = (function() {
     }
   }
 
-  async function upload(videoFile, metadata) {
+  async function upload(videoFile, metadata, onProgress) {
     try {
-      App.toast('Uploading video to Firebase Storage...', 'info', 5000);
       const user = firebase.auth().currentUser;
       const storageRef = firebase.storage().ref();
       const fileRef = storageRef.child(`temp_uploads/${user.uid}/${Date.now()}_${videoFile.name}`);
       
-      await fileRef.put(videoFile);
+      const uploadTask = fileRef.put(videoFile);
+      
+      await new Promise((resolve, reject) => {
+        uploadTask.on('state_changed', 
+          (snapshot) => {
+            if (onProgress) {
+              const percentage = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+              onProgress(percentage);
+            }
+          },
+          (error) => reject(error),
+          () => resolve()
+        );
+      });
+
       const downloadUrl = await fileRef.getDownloadURL();
 
-      App.toast('Publishing to YouTube...', 'info', 5000);
       const token = await getFirebaseIdToken();
       const res = await fetch(`${BACKEND_URL}/api/youtube/upload`, {
         method: 'POST',
@@ -151,20 +163,19 @@ const YouTube = (function() {
           title: metadata.title,
           description: metadata.description,
           tags: metadata.tags || [],
-          privacyStatus: 'public'
+          privacyStatus: metadata.privacyStatus || 'public'
         })
       });
       
       const data = await res.json();
       if (data.success) {
-        App.toast('YouTube upload successful!', 'success');
-        return data;
+        fileRef.delete().catch(e => console.warn('Storage cleanup failed:', e));
+        return { success: true, videoId: data.videoId, videoUrl: data.videoUrl };
       } else {
         throw new Error(data.error || 'Upload failed');
       }
     } catch (err) {
       console.error('YouTube upload failed:', err);
-      App.toast(err.message || 'YouTube upload failed', 'error');
       throw err;
     }
   }

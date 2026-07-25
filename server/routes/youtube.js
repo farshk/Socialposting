@@ -287,6 +287,29 @@ router.post('/upload', verifyAuth, async (req, res) => {
       maxBodyLength: Infinity
     });
 
+    // Save published post record to Firestore
+    try {
+      const { db } = require('../services/firebaseAdmin');
+      if (db) {
+        const postId = `yt_${uploadRes.data.id}`;
+        await db.doc(`users/${req.uid}/posts/${postId}`).set({
+          id: postId,
+          title: title || 'Untitled',
+          description: description || '',
+          tags: tags || [],
+          platforms: ['youtube'],
+          status: 'published',
+          publishedAt: new Date().toISOString(),
+          videoId: uploadRes.data.id,
+          videoUrl: `https://youtube.com/watch?v=${uploadRes.data.id}`,
+          platformId: 'youtube',
+          createdAt: Date.now()
+        });
+      }
+    } catch (firestoreErr) {
+      console.warn('Failed to save post to Firestore:', firestoreErr.message);
+    }
+
     res.json({
       success: true,
       videoId: uploadRes.data.id,

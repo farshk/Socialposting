@@ -349,6 +349,8 @@ const Dashboard = {
       const dateStr = date ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
       const platformsHtml = (post.platforms || []).slice(0, 4).map(id => getPlatformBadge(id)).join('');
 
+      const watchBtn = post.videoUrl ? `<a href="${post.videoUrl}" target="_blank" onclick="event.stopPropagation()" class="btn btn-ghost btn-sm" title="Watch on YouTube" style="margin-left:8px;"><i class="fab fa-youtube"></i></a>` : '';
+
       return `
         <tr onclick="App.showPostDetail('${post.id}')" style="cursor:pointer;">
           <td>
@@ -357,7 +359,12 @@ const Dashboard = {
               <span style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${post.title}</span>
             </div>
           </td>
-          <td><div class="post-platforms">${platformsHtml}</div></td>
+          <td>
+            <div style="display:flex;align-items:center;">
+              <div class="post-platforms">${platformsHtml}</div>
+              ${watchBtn}
+            </div>
+          </td>
           <td>${dateStr}</td>
           <td><span class="badge badge-${post.status}">${post.status}</span></td>
         </tr>`;
@@ -783,12 +790,15 @@ const Composer = {
     `;
   },
 
-  publish() {
+  async publish() {
     const title = ComposerState.selectedTitle || document.getElementById('post-title')?.value || 'Untitled Post';
     const desc = document.getElementById('post-description')?.value || document.getElementById('post-description-manual')?.value || '';
-    const hashtags = ComposerState.selectedHashtags.map(h => `#${h}`);
+    const hashtags = ComposerState.selectedHashtags.map(h => h.startsWith('#') ? h : `#${h}`);
+    const tags = ComposerState.selectedHashtags;
+    const platforms = ComposerState.selectedPlatforms;
+    const privacyStatus = document.getElementById('privacy-select')?.value || 'public';
 
-    if (ComposerState.selectedPlatforms.length === 0) {
+    if (platforms.length === 0) {
       App.toast('Please select at least one platform.', 'warning');
       return;
     }
@@ -806,35 +816,89 @@ const Composer = {
                  : ComposerState.scheduleType === 'scheduled' ? 'scheduled'
                  : 'draft';
 
+    const btn = document.getElementById('publish-btn');
+    btn.disabled = true;
+
+    if (ComposerState.scheduleType === 'now' && platforms.includes('youtube') && ComposerState.videoFile && typeof YouTube !== 'undefined') {
+      btn.innerHTML = '<i class="fas fa-spinner spinning"></i> Uploading to Firebase...';
+      
+      const progressWrap = document.getElementById('upload-progress-wrap');
+      const progressBar = document.getElementById('upload-progress-bar');
+      const progressLabel = document.getElementById('upload-progress-label');
+      
+      if (progressWrap) progressWrap.classList.remove('hidden');
+      if (progressBar) progressBar.style.width = '0%';
+      if (progressLabel) progressLabel.textContent = '0%';
+
+      try {
+        const result = await YouTube.upload(ComposerState.videoFile, { title, description: desc, tags, privacyStatus }, (pct) => {
+          if (progressBar) progressBar.style.width = pct + '%';
+          if (progressLabel) progressLabel.textContent = pct + '%';
+          if (pct === 100) {
+            if (progressLabel) progressLabel.textContent = 'Publishing to YouTube...';
+            btn.innerHTML = '<i class="fas fa-spinner spinning"></i> Publishing to YouTube...';
+          }
+        });
+
+        if (result.success) {
+          const post = {
+            id: Data.generateId(),
+            title,
+            description: desc,
+            hashtags,
+            platforms,
+            status: 'published',
+            scheduledAt,
+            publishedAt: new Date().toISOString(),
+            thumbnail: '🎬',
+            videoId: result.videoId,
+            videoUrl: result.videoUrl
+          };
+          
+          Data.savePost(post);
+          if (progressWrap) progressWrap.classList.add('hidden');
+          btn.innerHTML = '<i class="fas fa-check"></i> Done!';
+          App.toast('🎉 Published to YouTube successfully!', 'success');
+          setTimeout(() => App.navigate('dashboard'), 1500);
+          return;
+        }
+      } catch (err) {
+        if (progressWrap) progressWrap.classList.add('hidden');
+        btn.innerHTML = '<i class="fas fa-upload"></i> Publish Now';
+        btn.disabled = false;
+        App.toast('YouTube upload failed. Please try again.', 'error');
+        return;
+      }
+    }
+
+    // Fallback — non-YouTube or scheduled/draft (existing behavior)
     const post = {
       id: Data.generateId(),
       title,
       description: desc,
       hashtags,
-      platforms: ComposerState.selectedPlatforms,
+      platforms,
       status,
       scheduledAt,
       publishedAt: status === 'published' ? new Date().toISOString() : null,
       thumbnail: '🎬',
     };
 
-    const btn = document.getElementById('publish-btn');
     btn.innerHTML = '<i class="fas fa-spinner spinning"></i> Processing...';
-    btn.disabled = true;
 
     setTimeout(() => {
       Data.savePost(post);
       App.renderSidebar();
 
       const messages = {
-        published: `🎉 Post published to ${ComposerState.selectedPlatforms.length} platform(s)!`,
+        published: `🎉 Post published to ${platforms.length} platform(s)!`,
         scheduled: `📅 Post scheduled successfully!`,
         draft: `📝 Draft saved successfully!`,
       };
 
       App.toast(messages[status], 'success');
       App.navigate('dashboard');
-    }, 1200);
+    }, 1500);
   }
 };
 

@@ -221,6 +221,17 @@
                     <i class="fas fa-trash"></i> Remove
                   </button>
                 </div>
+                
+                <!-- Upload Progress (shown during Firebase Storage upload) -->
+                <div id="upload-progress-wrap" class="hidden" style="margin-top:16px;">
+                  <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                    <span style="font-size:13px;color:var(--text-secondary);"><i class="fas fa-cloud-upload-alt"></i> Uploading to cloud...</span>
+                    <span id="upload-progress-label" style="font-size:13px;font-weight:600;color:var(--accent-purple);">0%</span>
+                  </div>
+                  <div style="background:rgba(255,255,255,0.08);border-radius:8px;height:8px;overflow:hidden;">
+                    <div id="upload-progress-bar" style="height:100%;background:linear-gradient(90deg,var(--accent-purple),var(--accent-cyan));width:0%;border-radius:8px;transition:width 0.3s ease;"></div>
+                  </div>
+                </div>
               </div>
             </div>
             <div class="step-tips">
@@ -427,6 +438,16 @@
                     <!-- Filled by JS -->
                   </div>
                 </div>
+              </div>
+
+              <!-- Privacy Setting -->
+              <div class="card mt-4">
+                <h3 class="card-title mb-3"><i class="fas fa-lock"></i> Privacy Setting</h3>
+                <select id="privacy-select" class="form-input">
+                  <option value="public">🌍 Public — Visible to everyone</option>
+                  <option value="unlisted">🔗 Unlisted — Only people with the link</option>
+                  <option value="private">🔒 Private — Only you can see</option>
+                </select>
               </div>
             </div>
 
