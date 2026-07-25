@@ -139,6 +139,13 @@ Why these 7 platforms matter:
 | FR-026 | Backend must implement retry policies with exponential backoff for transient errors (5xx, timeouts) up to 3 retries, distinguishing rate-limited (retryable) from quota-exceeded (fatal) states. | Must Have |
 | FR-027 | Backend must handle long-running uploads asynchronously (e.g. respond with a job ID and run execution in a worker queue) to avoid HTTP timeout limits on serverless environments. | Must Have |
 
+### 4.5 Channel Metrics & Viewer
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-028 | System must fetch real channel statistics (subscriber count, video count, channel name, avatar) via YouTube Data API v3 and display them on the Accounts card instead of mock data. | Must Have |
+| FR-029 | The "View Posts" modal must fetch recent uploaded videos from YouTube API (or Firestore) displaying titles, published dates, view counts, and direct video links. | Must Have |
+| FR-030 | System must cache channel metrics in Firestore with a 1-hour TTL to prevent unnecessary YouTube API quota consumption on page refresh. | Must Have |
+
 ---
 
 ## 5. Acceptance Criteria
@@ -167,6 +174,9 @@ Why these 7 platforms matter:
 | AC-020 | GIVEN a published post on the dashboard, WHEN the user clicks the platform icon, THEN it opens the live post in a new tab. | FR-025 |
 | AC-021 | GIVEN a transient 503 platform error, WHEN the backend publishes, THEN it retries up to 3 times before failing. | FR-026 |
 | AC-022 | GIVEN a video file upload, WHEN processed by the backend proxy, THEN the server responds immediately with a job ID and runs the upload asynchronously. | FR-027 |
+| AC-023 | GIVEN a connected YouTube account, WHEN the user views the Accounts page, THEN real subscriber and video counts are displayed instead of zeros. | FR-028 |
+| AC-024 | GIVEN the user opens the "View Posts" modal for YouTube, WHEN the data loads, THEN it displays real uploaded videos with direct watch links. | FR-029 |
+| AC-025 | GIVEN the user refreshes the Accounts page within 1 hour, WHEN channel stats load, THEN they are served from Firestore cache instead of hitting the YouTube API. | FR-030 |
 
 ---
 
@@ -231,8 +241,11 @@ sequenceDiagram
 
 ### 8.1 YouTube (Google API v3)
 - **Auth Endpoint:** `https://accounts.google.com/o/oauth2/v2/auth`
-- **Scopes:** `https://www.googleapis.com/auth/youtube.upload`
-- **Upload Endpoint:** `POST https://www.googleapis.com/upload/youtube/v3/videos?part=snippet,status`
+- **Scopes:** `https://www.googleapis.com/auth/youtube.upload`, `https://www.googleapis.com/auth/youtube.readonly`
+- **Endpoints:**
+  - **Upload:** `POST https://www.googleapis.com/upload/youtube/v3/videos?part=snippet,status`
+  - **Channel Stats:** `GET https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&mine=true` (Requires fields: `statistics.subscriberCount`, `statistics.videoCount`, `snippet.thumbnails`. Quota cost: 1 unit)
+  - **Recent Posts:** `GET https://www.googleapis.com/youtube/v3/playlistItems?part=snippet` (using uploads playlist ID)
 - **Method:** Resumable upload or direct upload with Firebase URL.
 - **Constraints:** Max 256GB / 12 hours. Shorts must be <60s and vertical.
 - **Dev Requirements:** Google Cloud Console project, YouTube Data API v3 enabled.
