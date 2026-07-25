@@ -146,6 +146,15 @@ Why these 7 platforms matter:
 | FR-029 | The "View Posts" modal must fetch recent uploaded videos from YouTube API (or Firestore) displaying titles, published dates, view counts, and direct video links. | Must Have |
 | FR-030 | System must cache channel metrics in Firestore with a 1-hour TTL to prevent unnecessary YouTube API quota consumption on page refresh. | Must Have |
 
+### 4.6 New Post Publishing & Video Upload
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-031 | **Composer Real Post Submission:** System must wire the Composer "Publish Now" button to collect video file, title, description, tags, privacy setting (public/unlisted/private), and selected target platforms (e.g. YouTube), triggering real publishing instead of mock timers. | Must Have |
+| FR-032 | **Firebase Storage Media Bridge & Progress:** System must upload the selected video file from browser to Firebase Storage (`temp_uploads/{uid}/{timestamp}_{filename}`), track percentage upload progress, and obtain a download URL for API ingestion. | Must Have |
+| FR-033 | **YouTube Resumable Video Upload:** Backend must route video URL + metadata to YouTube Data API v3 resumable upload protocol (`uploadType=resumable`), handle 3-step initiation, stream piping, and return `videoId` and `videoUrl`. | Must Have |
+| FR-034 | **Post History Persistence & Dashboard Sync:** System must store successful post records in Firestore & LocalStorage with returned platform post IDs, update the Dashboard post table, and display direct Watch links. | Must Have |
+| FR-035 | **Post-Publication Storage Cleanup:** System must automatically delete the temporary video file from Firebase Storage once API ingestion succeeds or after a 24-hour cleanup window. | Must Have |
+
 ---
 
 ## 5. Acceptance Criteria
@@ -177,6 +186,11 @@ Why these 7 platforms matter:
 | AC-023 | GIVEN a connected YouTube account, WHEN the user views the Accounts page, THEN real subscriber and video counts are displayed instead of zeros. | FR-028 |
 | AC-024 | GIVEN the user opens the "View Posts" modal for YouTube, WHEN the data loads, THEN it displays real uploaded videos with direct watch links. | FR-029 |
 | AC-025 | GIVEN the user refreshes the Accounts page within 1 hour, WHEN channel stats load, THEN they are served from Firestore cache instead of hitting the YouTube API. | FR-030 |
+| AC-026 | GIVEN the Composer is filled out, WHEN the user clicks "Publish Now", THEN real publishing is triggered using collected metadata (title, description, tags, privacy) and video file. | FR-031 |
+| AC-027 | GIVEN a real publish is initiated, WHEN the video uploads to Firebase, THEN the progress bar updates accurately and a `temp_uploads` URL is generated. | FR-032 |
+| AC-028 | GIVEN a YouTube publish job, WHEN the backend processes it, THEN the YouTube Data API v3 resumable upload protocol is used and returns a valid `videoId`. | FR-033 |
+| AC-029 | GIVEN a successful post, WHEN the dashboard updates, THEN the new post record is stored in Firestore and LocalStorage and displayed in the post table with a Watch link. | FR-034 |
+| AC-030 | GIVEN a completed API ingestion or 24-hour expiration, WHEN the cleanup process runs, THEN the temporary video file is deleted from Firebase Storage. | FR-035 |
 
 ---
 
@@ -243,10 +257,13 @@ sequenceDiagram
 - **Auth Endpoint:** `https://accounts.google.com/o/oauth2/v2/auth`
 - **Scopes:** `https://www.googleapis.com/auth/youtube.upload`, `https://www.googleapis.com/auth/youtube.readonly`
 - **Endpoints:**
-  - **Upload:** `POST https://www.googleapis.com/upload/youtube/v3/videos?part=snippet,status`
+  - **Upload:** `POST https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status`
   - **Channel Stats:** `GET https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&mine=true` (Requires fields: `statistics.subscriberCount`, `statistics.videoCount`, `snippet.thumbnails`. Quota cost: 1 unit)
   - **Recent Posts:** `GET https://www.googleapis.com/youtube/v3/playlistItems?part=snippet` (using uploads playlist ID)
 - **Method:** Resumable upload or direct upload with Firebase URL.
+- **Headers:** `X-Upload-Content-Type: video/*`
+- **Payload Schema:** JSON object containing `snippet` (title, description, tags, categoryId) and `status` (privacyStatus: public/unlisted/private).
+- **Response Format:** JSON containing `id` (videoId) and published metadata.
 - **Constraints:** Max 256GB / 12 hours. Shorts must be <60s and vertical.
 - **Dev Requirements:** Google Cloud Console project, YouTube Data API v3 enabled.
 

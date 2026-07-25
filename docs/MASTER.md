@@ -215,3 +215,4 @@ All agents working on this project MUST:
 | 2026-07-19 | Senior BA Agent | F002 BRD and QA report reviewed — Verdict: Approved with Changes; identified gaps in scopes, storage cleanup, and proxy timeouts |
 | 2026-07-19 | Dev Agent | F002-YouTube: Backend proxy server created (server/), YouTube OAuth, token storage in Firestore, resumable video upload, frontend js/youtube.js module |
 | 2026-07-26 | BA Agent | Added FR-028 to FR-030, AC-023 to AC-025, and TS-012 for real YouTube channel stats & published videos viewer in F002 BRD and QA report |
+| 2026-07-26 | BA Agent | Added FR-031 to FR-035, AC-026 to AC-030, and TS-013 for New Post Video Publishing flow in F002 BRD and QA report |

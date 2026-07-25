@@ -158,6 +158,16 @@ This document covers all test scenarios for the F002 API integration module, ver
 | TC-075 | Verify data in "View Posts" modal | Each post shows accurate title, published date, view count, and a valid video link (`https://youtube.com/watch?v=...`) | High | PASSED |
 | TC-076 | Click on a video link in "View Posts" modal | Directs to `https://youtube.com/watch?v=...` in a new tab | High | PASSED |
 
+### 3.13 TS-013 — Video Post Publishing & Upload Flow
+| ID | Test Case | Expected Result | Priority | Result |
+|---|---|---|---|---|
+| TC-077 | Submit post via Composer "Publish Now" button | Initiates real publishing with collected metadata (title, description, tags, privacy) | Critical | |
+| TC-078 | Upload video file to Firebase Storage | Video is uploaded to `temp_uploads/{uid}/{timestamp}_{filename}`, returns URL, UI shows progress | Critical | |
+| TC-079 | Execute YouTube Resumable Video Upload | Backend successfully initiates and streams video to YouTube Data API v3 using resumable protocol | Critical | |
+| TC-080 | Verify successful YouTube post response | API returns valid `videoId` and `videoUrl` | High | |
+| TC-081 | Persist post history and sync Dashboard | Post record is saved to Firestore/LocalStorage, Dashboard table updates with correct Watch link | High | |
+| TC-082 | Verify Post-Publication Storage Cleanup | Temporary video file is deleted from Firebase Storage upon success or after 24-hour cleanup window | High | |
+
 ---
 
 ## 4. QA Agent Results
