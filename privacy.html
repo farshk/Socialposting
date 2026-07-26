@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — Viralify</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="css/main.css">
+  <style>
+    body {
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 40px 20px;
+    }
+    .privacy-container {
+      max-width: 800px;
+      width: 100%;
+      background: var(--bg-card, rgba(17, 24, 39, 0.8));
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+      border-radius: 20px;
+      padding: 40px;
+      color: #e2e8f0;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    }
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 24px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 24px;
+      text-decoration: none;
+    }
+    .brand-logo i {
+      color: #7c3aed;
+    }
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+    .updated-date {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 32px;
+    }
+    h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-top: 28px;
+      margin-bottom: 12px;
+      color: #cbd5e1;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding-bottom: 8px;
+    }
+    p, li {
+      font-size: 15px;
+      line-height: 1.7;
+      color: #94a3b8;
+      margin-bottom: 12px;
+    }
+    ul {
+      padding-left: 24px;
+      margin-bottom: 16px;
+    }
+    .highlight-box {
+      background: rgba(124, 58, 237, 0.1);
+      border: 1px solid rgba(124, 58, 237, 0.3);
+      border-radius: 12px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    a {
+      color: #a78bfa;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="privacy-container">
+    <a href="index.html" class="brand-logo">
+      <i class="fas fa-paper-plane"></i>
+      <span>Viralify</span>
+    </a>
+
+    <h1>Privacy Policy & User Data Guidelines</h1>
+    <div class="updated-date">Last Updated: July 26, 2026</div>
+
+    <p>At <strong>Viralify</strong> ("we", "our", or "us"), accessible from <code>https://socialposting-eight.vercel.app</code>, we prioritize the privacy and security of our users' personal data and social media authorizations.</p>
+
+    <h2>1. Information We Collect</h2>
+    <p>When you use Viralify to schedule and publish video content, we collect the following types of information:</p>
+    <ul>
+      <li><strong>Account Information:</strong> Name, email address, and authentication identifiers provided during sign-in.</li>
+      <li><strong>Social Platform Tokens:</strong> OAuth 2.0 access tokens, refresh tokens, page access tokens, and account IDs provided by connected platforms (including Google/YouTube, Meta/Facebook/Instagram, and TikTok).</li>
+      <li><strong>Content Data:</strong> Video titles, descriptions, hashtags, thumbnail previews, and schedule timestamps created within the Composer module.</li>
+    </ul>
+
+    <h2>2. How We Use Your Information</h2>
+    <p>We use the collected information solely to deliver social media scheduling and publishing functionality:</p>
+    <ul>
+      <li>To authenticate your session and verify authorization across connected platforms.</li>
+      <li>To publish video content and metadata to target social media platforms upon your explicit request.</li>
+      <li>To retrieve channel metrics (e.g. subscriber count, follower count, view count) for your personal dashboard display.</li>
+    </ul>
+
+    <h2>3. Data Protection & Security</h2>
+    <p>We implement strict security measures to protect your credentials:</p>
+    <ul>
+      <li>All OAuth access tokens are stored securely in backend server databases (Firebase Firestore) and are never exposed to browser client scripts.</li>
+      <li>All network requests between Viralify, our servers, and third-party APIs use HTTPS encryption.</li>
+      <li>We do not sell, rent, or trade your personal data or social media credentials to third parties.</li>
+    </ul>
+
+    <div class="highlight-box" id="data-deletion">
+      <h2>4. User Data Deletion Instructions</h2>
+      <p>You have full control over your connected accounts and stored data. You can request deletion of your data at any time:</p>
+      <ul>
+        <li><strong>In-App Disconnect:</strong> Go to the <strong>Accounts</strong> section inside Viralify and click <strong>Disconnect</strong> on any connected platform card. This instantly revokes and deletes all associated OAuth tokens from our database.</li>
+        <li><strong>Meta / Facebook Data Removal:</strong> You can remove Viralify's access directly via your Facebook Account:
+          <ol>
+            <li>Go to your Facebook Profile's <strong>Settings & Privacy</strong> &gt; <strong>Settings</strong>.</li>
+            <li>Select <strong>Business Integrations</strong> or <strong>Apps and Websites</strong>.</li>
+            <li>Find <strong>Viralify</strong> and click <strong>Remove</strong>.</li>
+          </ol>
+        </li>
+        <li><strong>Complete Account & Data Wipe Request:</strong> If you wish to delete your entire Viralify account and all stored history, please contact our support team at <a href="mailto:support@viralify.app">support@viralify.app</a>. All associated records will be deleted within 48 hours.</li>
+      </ul>
+    </div>
+
+    <h2>5. Contact Us</h2>
+    <p>If you have any questions or concerns regarding this Privacy Policy, please reach out to us at <a href="mailto:support@viralify.app">support@viralify.app</a>.</p>
+  </div>
+</body>
+</html>
