@@ -819,8 +819,8 @@ const Composer = {
     const btn = document.getElementById('publish-btn');
     btn.disabled = true;
 
-    if (ComposerState.scheduleType === 'now' && platforms.includes('youtube') && ComposerState.videoFile && typeof YouTube !== 'undefined') {
-      btn.innerHTML = '<i class="fas fa-spinner spinning"></i> Uploading to Firebase...';
+    if (ComposerState.scheduleType === 'now' && (platforms.includes('youtube') || platforms.includes('facebook') || platforms.includes('instagram')) && ComposerState.videoFile) {
+      btn.innerHTML = '<i class="fas fa-spinner spinning"></i> Publishing...';
       
       const progressWrap = document.getElementById('upload-progress-wrap');
       const progressBar = document.getElementById('upload-progress-bar');
@@ -831,42 +831,59 @@ const Composer = {
       if (progressLabel) progressLabel.textContent = '0%';
 
       try {
-        const result = await YouTube.upload(ComposerState.videoFile, { title, description: desc, tags, privacyStatus }, (pct) => {
-          if (progressBar) progressBar.style.width = pct + '%';
-          if (progressLabel) progressLabel.textContent = pct + '%';
-          if (pct === 100) {
-            if (progressLabel) progressLabel.textContent = 'Publishing to YouTube...';
-            btn.innerHTML = '<i class="fas fa-spinner spinning"></i> Publishing to YouTube...';
-          }
-        });
+        let ytResult = null;
+        let fbResult = null;
+        let igResult = null;
+        
+        // Mock public URL for Meta since we don't have Firebase Storage yet
+        const publicVideoUrl = "https://www.w3schools.com/html/mov_bbb.mp4";
 
-        if (result.success) {
-          const post = {
-            id: Data.generateId(),
-            title,
-            description: desc,
-            hashtags,
-            platforms,
-            status: 'published',
-            scheduledAt,
-            publishedAt: new Date().toISOString(),
-            thumbnail: '🎬',
-            videoId: result.videoId,
-            videoUrl: result.videoUrl
-          };
-          
-          Data.savePost(post);
-          if (progressWrap) progressWrap.classList.add('hidden');
-          btn.innerHTML = '<i class="fas fa-check"></i> Done!';
-          App.toast('🎉 Published to YouTube successfully!', 'success');
-          setTimeout(() => App.navigate('dashboard'), 1500);
-          return;
+        if (platforms.includes('youtube') && typeof YouTube !== 'undefined') {
+          if (progressLabel) progressLabel.textContent = 'Publishing to YouTube...';
+          ytResult = await YouTube.upload(ComposerState.videoFile, { title, description: desc, tags, privacyStatus }, (pct) => {
+            if (progressBar) progressBar.style.width = pct + '%';
+            if (progressLabel) progressLabel.textContent = pct + '%';
+          });
         }
+        
+        if (platforms.includes('facebook') && typeof Meta !== 'undefined') {
+          if (progressLabel) progressLabel.textContent = 'Publishing to Facebook...';
+          fbResult = await Meta.publishFacebook(publicVideoUrl, title, desc);
+        }
+
+        if (platforms.includes('instagram') && typeof Meta !== 'undefined') {
+          if (progressLabel) progressLabel.textContent = 'Publishing to Instagram...';
+          igResult = await Meta.publishInstagram(publicVideoUrl, desc);
+        }
+
+        const post = {
+          id: Data.generateId(),
+          title,
+          description: desc,
+          hashtags,
+          platforms,
+          status: 'published',
+          scheduledAt,
+          publishedAt: new Date().toISOString(),
+          thumbnail: '🎬',
+          videoId: ytResult ? ytResult.videoId : undefined,
+          videoUrl: ytResult ? ytResult.videoUrl : undefined,
+          fbVideoId: fbResult ? fbResult.videoId : undefined,
+          igMediaId: igResult ? igResult.mediaId : undefined
+        };
+        
+        Data.savePost(post);
+        if (progressWrap) progressWrap.classList.add('hidden');
+        btn.innerHTML = '<i class="fas fa-check"></i> Done!';
+        App.toast('🎉 Published successfully!', 'success');
+        setTimeout(() => App.navigate('dashboard'), 1500);
+        return;
       } catch (err) {
         if (progressWrap) progressWrap.classList.add('hidden');
         btn.innerHTML = '<i class="fas fa-upload"></i> Publish Now';
         btn.disabled = false;
-        App.toast('YouTube upload failed. Please try again.', 'error');
+        App.toast('Upload failed. Please try again.', 'error');
+        console.error(err);
         return;
       }
     }

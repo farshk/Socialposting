@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const youtubeRoutes = require('./routes/youtube');
+const metaRoutes = require('./routes/meta');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -26,6 +27,9 @@ app.get('/health', (req, res) => {
 
 // Routes
 app.use('/api/youtube', youtubeRoutes);
+app.use('/api/meta', metaRoutes);
+app.use('/api/facebook', metaRoutes);
+app.use('/api/instagram', metaRoutes);
 
 // Error Handling Middleware — exposes actual error for debugging
 app.use((err, req, res, next) => {
