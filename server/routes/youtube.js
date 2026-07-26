@@ -276,6 +276,78 @@ router.post('/initiate-upload', verifyAuth, async (req, res) => {
 });
 
 /**
+ * POST /api/youtube/upload-chunk
+ * Browser uploads video in 2MB base64-encoded chunks.
+ * Backend decodes each chunk and forwards it to YouTube's resumable upload URL.
+ * This is required because YouTube's upload API does not support browser CORS.
+ *
+ * Body: { uploadUrl, chunk (base64), start, end, total, contentType }
+ * Returns: { status: 'incomplete'|'complete', videoId? }
+ */
+router.post('/upload-chunk', verifyAuth, async (req, res) => {
+  const { uploadUrl, chunk, start, end, total, contentType } = req.body;
+
+  if (!uploadUrl || chunk === undefined || start === undefined || end === undefined || total === undefined) {
+    return res.status(400).json({ success: false, error: 'Missing required fields', code: 'MISSING_PARAMS' });
+  }
+
+  try {
+    // Refresh token if needed
+    let tokens = await getTokens(req.uid, 'youtube');
+    if (!tokens || !tokens.accessToken) {
+      return res.status(401).json({ success: false, error: 'YouTube not connected', code: 'NOT_CONNECTED' });
+    }
+    if (isTokenExpired(tokens) && tokens.refreshToken) {
+      const refreshRes = await axios.post('https://oauth2.googleapis.com/token', {
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET,
+        refresh_token: tokens.refreshToken,
+        grant_type: 'refresh_token'
+      });
+      tokens.accessToken = refreshRes.data.access_token;
+      tokens.expiresAt = Date.now() + (refreshRes.data.expires_in * 1000);
+      await saveTokens(req.uid, 'youtube', tokens);
+    }
+
+    // Decode base64 chunk to binary Buffer
+    const chunkBuffer = Buffer.from(chunk, 'base64');
+    const chunkEnd = end - 1; // Content-Range is inclusive
+
+    // Forward chunk to YouTube resumable upload URL
+    const youtubeRes = await axios.put(uploadUrl, chunkBuffer, {
+      headers: {
+        'Authorization': `Bearer ${tokens.accessToken}`,
+        'Content-Type': contentType || 'video/mp4',
+        'Content-Range': `bytes ${start}-${chunkEnd}/${total}`,
+        'Content-Length': String(chunkBuffer.length)
+      },
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+      validateStatus: (status) => [200, 201, 308].includes(status)
+    });
+
+    if (youtubeRes.status === 308) {
+      // YouTube wants more chunks
+      const rangeHeader = youtubeRes.headers['range'] || '';
+      const nextByte = rangeHeader ? parseInt(rangeHeader.split('-')[1], 10) + 1 : end;
+      return res.json({ success: true, status: 'incomplete', nextByte });
+    }
+
+    if (youtubeRes.status === 200 || youtubeRes.status === 201) {
+      // Upload complete — YouTube returns the video resource
+      const videoId = youtubeRes.data.id;
+      return res.json({ success: true, status: 'complete', videoId });
+    }
+
+    return res.status(500).json({ success: false, error: `Unexpected YouTube response: ${youtubeRes.status}` });
+
+  } catch (error) {
+    console.error('Chunk upload error:', error.response?.data || error.message);
+    res.status(500).json({ success: false, error: 'Failed to forward chunk to YouTube', code: 'CHUNK_FAILED' });
+  }
+});
+
+/**
  * POST /api/youtube/confirm-upload
  * Called by browser after direct YouTube upload completes. Saves post record to Firestore.
  */

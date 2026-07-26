@@ -130,15 +130,19 @@ const YouTube = (function() {
 
   /**
    * upload(videoFile, metadata, onProgress)
-   * Direct browser-to-YouTube upload — no Firebase Storage needed.
-   * Step 1: Ask backend to initiate a YouTube resumable upload session (returns uploadUrl).
-   * Step 2: Browser uploads the file directly to that URL via XHR with progress tracking.
-   * Step 3: Confirm with backend to save post record to Firestore.
+   * Chunked upload via backend proxy — required because YouTube's upload API
+   * does not allow browser CORS. The browser splits the video into 2MB chunks,
+   * sends each to our backend as base64 JSON, and the backend forwards to YouTube
+   * using the resumable upload Content-Range protocol.
+   *
+   * Each chunk: 2MB binary → ~2.7MB base64 → safely under Vercel's 4.5MB limit.
    */
   async function upload(videoFile, metadata, onProgress) {
     const token = await getFirebaseIdToken();
+    const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB per chunk
+    const totalSize = videoFile.size;
 
-    // Step 1: Get a resumable upload URL from the backend
+    // Step 1: Initiate resumable upload session on the backend
     const initiateRes = await fetch(`${BACKEND_URL}/api/youtube/initiate-upload`, {
       method: 'POST',
       headers: {
@@ -159,49 +163,66 @@ const YouTube = (function() {
       throw new Error(initiateData.error || 'Failed to initiate YouTube upload');
     }
 
-    const uploadUrl = initiateData.uploadUrl;
-    const accessToken = initiateData.accessToken; // YouTube OAuth token for CORS auth
+    const { uploadUrl } = initiateData;
 
-    // Step 2: Upload the video file DIRECTLY to YouTube via XHR with real progress
-    // Authorization header is required — YouTube's CDN only sends CORS headers
-    // when a valid OAuth token is present in the request.
-    const videoId = await new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('PUT', uploadUrl, true);
-      xhr.setRequestHeader('Content-Type', videoFile.type || 'video/mp4');
-      if (accessToken) {
-        xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+    // Helper: read a Blob slice as a base64 string
+    function readAsBase64(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          // result is "data:<mime>;base64,<data>" — extract only the base64 part
+          resolve(reader.result.split(',')[1]);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    // Step 2: Upload the video in sequential 2MB chunks via backend proxy
+    let start = 0;
+    let videoId = null;
+
+    while (start < totalSize) {
+      const end = Math.min(start + CHUNK_SIZE, totalSize);
+      const chunkBlob = videoFile.slice(start, end);
+      const chunkBase64 = await readAsBase64(chunkBlob);
+
+      const chunkRes = await fetch(`${BACKEND_URL}/api/youtube/upload-chunk`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          uploadUrl,
+          chunk: chunkBase64,
+          start,
+          end,
+          total: totalSize,
+          contentType: videoFile.type || 'video/mp4'
+        })
+      });
+
+      if (!chunkRes.ok) {
+        const errData = await chunkRes.json().catch(() => ({}));
+        throw new Error(errData.error || `Chunk upload failed (HTTP ${chunkRes.status})`);
       }
 
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable && onProgress) {
-          const pct = Math.round((e.loaded / e.total) * 100);
-          onProgress(pct);
-        }
-      };
+      const chunkData = await chunkRes.json();
 
-      xhr.onload = () => {
-        if (xhr.status === 200 || xhr.status === 201) {
-          try {
-            const responseData = JSON.parse(xhr.responseText);
-            resolve(responseData.id);
-          } catch (e) {
-            reject(new Error('YouTube upload succeeded but could not parse response'));
-          }
-        } else {
-          reject(new Error(`YouTube upload failed with status ${xhr.status}: ${xhr.responseText}`));
-        }
-      };
+      if (chunkData.status === 'complete' && chunkData.videoId) {
+        videoId = chunkData.videoId;
+      } else if (!chunkData.success && chunkData.status !== 'incomplete') {
+        throw new Error(chunkData.error || 'Chunk upload failed');
+      }
 
-      xhr.onerror = () => reject(new Error('Network error during YouTube upload'));
-      xhr.onabort = () => reject(new Error('YouTube upload was aborted'));
+      start = end;
+      if (onProgress) onProgress(Math.round((start / totalSize) * 100));
+    }
 
-      xhr.send(videoFile);
-    });
+    if (!videoId) throw new Error('Upload completed but no videoId was received from YouTube');
 
-    if (!videoId) throw new Error('YouTube did not return a video ID');
-
-    // Step 3: Confirm with backend to save post record to Firestore
+    // Step 3: Confirm with backend — saves post record to Firestore
     const confirmRes = await fetch(`${BACKEND_URL}/api/youtube/confirm-upload`, {
       method: 'POST',
       headers: {
@@ -223,7 +244,6 @@ const YouTube = (function() {
       videoUrl: confirmData.videoUrl || `https://www.youtube.com/watch?v=${videoId}`
     };
   }
-
 
   function init() {
     const connectBtn = document.getElementById('youtube-connect-btn');
