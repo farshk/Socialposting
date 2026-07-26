@@ -261,7 +261,11 @@ router.post('/initiate-upload', verifyAuth, async (req, res) => {
       return res.status(500).json({ success: false, error: 'YouTube did not return an upload URL', code: 'NO_UPLOAD_URL' });
     }
 
-    res.json({ success: true, uploadUrl });
+    // Return both the upload URL and the access token.
+    // The browser needs to include Authorization: Bearer <accessToken> in its XHR
+    // so YouTube's CDN responds with CORS headers allowing the cross-origin PUT.
+    // Access tokens are short-lived (1 hour) and scoped only to youtube.upload.
+    res.json({ success: true, uploadUrl, accessToken: tokens.accessToken });
   } catch (error) {
     console.error('Initiate upload error:', error.response?.data || error.message);
     if (error.response?.data?.error?.errors?.[0]?.reason === 'quotaExceeded') {

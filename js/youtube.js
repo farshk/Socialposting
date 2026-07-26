@@ -160,12 +160,18 @@ const YouTube = (function() {
     }
 
     const uploadUrl = initiateData.uploadUrl;
+    const accessToken = initiateData.accessToken; // YouTube OAuth token for CORS auth
 
     // Step 2: Upload the video file DIRECTLY to YouTube via XHR with real progress
+    // Authorization header is required — YouTube's CDN only sends CORS headers
+    // when a valid OAuth token is present in the request.
     const videoId = await new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('PUT', uploadUrl, true);
       xhr.setRequestHeader('Content-Type', videoFile.type || 'video/mp4');
+      if (accessToken) {
+        xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+      }
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && onProgress) {
