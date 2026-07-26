@@ -279,3 +279,65 @@ Provides OAuth 2.0 and upload capabilities for YouTube via a Node.js Express ser
 * **Description:** Stub endpoint for future async processing tracking.
 * **Auth Requirement:** Requires Firebase ID Token.
 * **Returns:** `{ success: true, jobId: string, status: string, platform: string }`
+
+---
+
+## 9. Meta (Facebook & Instagram) API (`server/routes/meta.js`)
+
+Provides OAuth 2.0, token lifecycle, and publishing capabilities for Facebook Pages and Instagram Accounts.
+
+### `GET /api/meta/auth`
+* **Description:** Generates Meta OAuth authorization URL.
+* **Auth Requirement:** Requires Firebase ID Token.
+
+### `GET /api/meta/callback`
+* **Description:** OAuth callback endpoint. Exchanges short-lived token for long-lived token and saves to Firestore.
+
+### `GET /api/meta/pages`
+* **Description:** Retrieves connected Facebook Pages and associated Instagram Business/Creator accounts.
+* **Auth Requirement:** Requires Firebase ID Token.
+
+### `POST /api/facebook/publish`
+* **Description:** Uploads and publishes a video post to a Facebook Page.
+* **Auth Requirement:** Requires Firebase ID Token.
+
+### `GET /api/facebook/metrics`
+* **Description:** Fetches Facebook Page metrics.
+* **Auth Requirement:** Requires Firebase ID Token.
+
+### `POST /api/instagram/publish`
+* **Description:** Executes 3-step Reel publish pipeline (Container, Poll, Publish).
+* **Auth Requirement:** Requires Firebase ID Token.
+
+### `GET /api/instagram/metrics`
+* **Description:** Fetches Instagram account metrics.
+* **Auth Requirement:** Requires Firebase ID Token.
+
+### `DELETE /api/meta/disconnect`
+* **Description:** Revokes Meta OAuth tokens and removes from Firestore.
+* **Auth Requirement:** Requires Firebase ID Token.
+
+---
+
+## 10. TikTok API (`server/routes/tiktok.js`)
+
+Provides OAuth (PKCE) and Direct Post publishing capabilities for TikTok.
+
+### `GET /api/tiktok/auth`
+* **Description:** Generates TikTok OAuth (PKCE) authorization URL.
+* **Auth Requirement:** Requires Firebase ID Token.
+
+### `GET /api/tiktok/callback`
+* **Description:** OAuth callback endpoint. Exchanges authorization code for tokens, storing refresh tokens for rotation.
+
+### `POST /api/tiktok/publish`
+* **Description:** Executes 4-step Direct Post publish pipeline (Init, Upload, Settings, Polling).
+* **Auth Requirement:** Requires Firebase ID Token.
+
+### `GET /api/tiktok/metrics`
+* **Description:** Fetches TikTok account metrics.
+* **Auth Requirement:** Requires Firebase ID Token.
+
+### `DELETE /api/tiktok/disconnect`
+* **Description:** Revokes TikTok OAuth tokens and removes from Firestore.
+* **Auth Requirement:** Requires Firebase ID Token.

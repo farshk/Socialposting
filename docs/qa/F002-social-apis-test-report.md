@@ -168,6 +168,53 @@ This document covers all test scenarios for the F002 API integration module, ver
 | TC-081 | Persist post history and sync Dashboard | Post record is saved to Firestore/LocalStorage, Dashboard table updates with correct Watch link | High | |
 | TC-082 | Verify Post-Publication Storage Cleanup | Temporary video file is deleted from Firebase Storage upon success or after 24-hour cleanup window | High | |
 
+### 3.14 TS-014 — Meta OAuth & Page Selection
+| ID | Test Case | Expected Result | Priority | Result |
+|---|---|---|---|---|
+| TC-083 | Short token exchange | Backend successfully exchanges short-lived token for long-lived token | Critical | |
+| TC-084 | Page access token extraction | `/me/accounts` returns Pages and valid Page Access Tokens | Critical | |
+| TC-085 | IG Business account lookup | Fetching `instagram_business_account` field successfully links IG account | High | |
+| TC-086 | Disconnect Meta | Revokes tokens and removes from Firestore | High | |
+
+### 3.15 TS-015 — Instagram Reels Publishing
+| ID | Test Case | Expected Result | Priority | Result |
+|---|---|---|---|---|
+| TC-087 | Container creation | Creates Reel container and returns valid container ID | Critical | |
+| TC-088 | Container status polling loop | Backend correctly handles IN_PROGRESS, EXPIRED, ERROR, and FINISHED states | High | |
+| TC-089 | Publishing execution | Successfully calls `media_publish` with creation ID when FINISHED | Critical | |
+| TC-090 | Aspect ratio error handling | Backend/API correctly flags non-9:16 aspect ratios for Reels | Medium | |
+
+### 3.16 TS-016 — Facebook Video Publishing
+| ID | Test Case | Expected Result | Priority | Result |
+|---|---|---|---|---|
+| TC-091 | Page video upload | Successfully posts video using Page Access Token | Critical | |
+| TC-092 | Caption formatting | Validates title, description, and hashtags formatting | Medium | |
+| TC-093 | Permalink extraction | Extracts valid `https://facebook.com/{video_id}` URL | High | |
+
+### 3.17 TS-017 — TikTok OAuth & PKCE
+| ID | Test Case | Expected Result | Priority | Result |
+|---|---|---|---|---|
+| TC-094 | Code verifier/challenge validation | OAuth completes successfully using PKCE challenge | Critical | |
+| TC-095 | Refresh token rotation | Rotates refresh token automatically before expiry | High | |
+| TC-096 | Scope checks | Validates `video.upload` scopes are fully granted | Medium | |
+
+### 3.18 TS-018 — TikTok Direct Post & Controls
+| ID | Test Case | Expected Result | Priority | Result |
+|---|---|---|---|---|
+| TC-097 | Init request | Successfully calls `/v2/post/publish/video/init/` and gets publish_id | Critical | |
+| TC-098 | Chunk/pull upload | Upload completes successfully using chunked or URL pull | High | |
+| TC-099 | Privacy settings | Correctly passes `privacy_level` (PUBLIC / FRIENDS / SELF) | High | |
+| TC-100 | Comment/duet/stitch toggles | Disables features when requested via payload | Medium | |
+| TC-101 | Status polling | Successfully polls `/v2/post/publish/status/fetch/` until status is returned | High | |
+
+### 3.19 TS-019 — Metrics & Recent Posts
+| ID | Test Case | Expected Result | Priority | Result |
+|---|---|---|---|---|
+| TC-102 | Meta Graph API channel metrics | Correctly fetches Page and IG stats | High | |
+| TC-103 | TikTok API channel metrics | Correctly fetches TikTok profile stats | High | |
+| TC-104 | 1-hour cache validation | Caches metrics in Firestore and serves them for 60 minutes | High | |
+| TC-105 | Video viewer modals | Recent Posts modal correctly displays posts and URLs | Medium | |
+
 ---
 
 ## 4. QA Agent Results

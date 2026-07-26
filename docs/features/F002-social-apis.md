@@ -155,6 +155,28 @@ Why these 7 platforms matter:
 | FR-034 | **Post History Persistence & Dashboard Sync:** System must store successful post records in Firestore & LocalStorage with returned platform post IDs, update the Dashboard post table, and display direct Watch links. | Must Have |
 | FR-035 | **Post-Publication Storage Cleanup:** System must automatically delete the temporary video file from Firebase Storage once API ingestion succeeds or after a 24-hour cleanup window. | Must Have |
 
+### 4.7 Meta Integration (Facebook & Instagram)
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-036 | **Meta OAuth:** Implement Short-to-Long-Lived Exchange (`fb_exchange_token`) & Page Enumeration (`GET /me/accounts`). | Must Have |
+| FR-037 | **Facebook Token:** Persist Page Access Token and implement Selection state management in Firestore (`users/{uid}/platforms/facebook`). | Must Have |
+| FR-038 | **Instagram Linking:** Implement Instagram Creator/Business Account Linking via `GET /{page_id}?fields=instagram_business_account`. | Must Have |
+| FR-039 | **IG Reels:** Implement Instagram Reel 3-Step Pipeline: Container Creation, Status Polling, and Media Publishing. | Must Have |
+| FR-040 | **FB Video:** Implement Facebook Page Video Publishing, Resumable/Chunked Upload, and extract permalink URL. | Must Have |
+
+### 4.8 TikTok Integration
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-041 | **TikTok OAuth:** Implement TikTok PKCE OAuth flow and Refresh Token Rotation. | Must Have |
+| FR-042 | **TikTok Video:** Implement TikTok Direct Video Post 4-Step Publishing Pipeline (Init, Upload, Settings, Polling). | Must Have |
+| FR-043 | **TikTok Content Controls:** Implement Privacy Settings & Content Control Toggles (`privacy_level`, `disable_comment`, `disable_duet`, `disable_stitch`, `brand_content_toggle`). | Must Have |
+
+### 4.9 Meta & TikTok Channel Metrics & Recent Posts
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-044 | **Metrics Caching:** Meta Graph API & TikTok API Channel Metrics Caching (1-hour TTL in Firestore). | Must Have |
+| FR-045 | **Recent Posts:** Meta & TikTok Recent Posts Listing Modal integration. | Must Have |
+
 ---
 
 ## 5. Acceptance Criteria
@@ -191,6 +213,16 @@ Why these 7 platforms matter:
 | AC-028 | GIVEN a YouTube publish job, WHEN the backend processes it, THEN the YouTube Data API v3 resumable upload protocol is used and returns a valid `videoId`. | FR-033 |
 | AC-029 | GIVEN a successful post, WHEN the dashboard updates, THEN the new post record is stored in Firestore and LocalStorage and displayed in the post table with a Watch link. | FR-034 |
 | AC-030 | GIVEN a completed API ingestion or 24-hour expiration, WHEN the cleanup process runs, THEN the temporary video file is deleted from Firebase Storage. | FR-035 |
+| AC-036 | GIVEN a user connects Meta, WHEN they complete OAuth, THEN the backend exchanges the short-lived token for a long-lived one and enumerates Pages. | FR-036 |
+| AC-037 | GIVEN multiple Facebook Pages, WHEN the user selects one, THEN the specific Page Access Token is stored in Firestore. | FR-037 |
+| AC-038 | GIVEN a selected Facebook Page, WHEN linked, THEN the backend retrieves and links the associated Instagram Business/Creator Account. | FR-038 |
+| AC-039 | GIVEN an Instagram Reel publish request, WHEN processing, THEN the backend creates a container, polls status until FINISHED, and publishes. | FR-039 |
+| AC-040 | GIVEN a Facebook Video publish request, WHEN processing, THEN the video uploads and the permalink URL is saved to Firestore. | FR-040 |
+| AC-041 | GIVEN a TikTok OAuth login, WHEN exchanging codes, THEN the backend uses PKCE and stores refresh tokens for rotation. | FR-041 |
+| AC-042 | GIVEN a TikTok Direct Post publish request, WHEN processing, THEN the backend executes the 4-step init, chunk upload, and publish flow. | FR-042 |
+| AC-043 | GIVEN TikTok content controls are set, WHEN publishing, THEN privacy level, comment, duet, and stitch toggles are applied to the payload. | FR-043 |
+| AC-044 | GIVEN Meta or TikTok metrics are requested, WHEN loaded, THEN they are served from Firestore cache within a 1-hour TTL. | FR-044 |
+| AC-045 | GIVEN the user views recent posts for Meta or TikTok, WHEN opened, THEN the modal lists the most recently published items. | FR-045 |
 
 ---
 
@@ -274,6 +306,15 @@ sequenceDiagram
 - **Method:** Requires public video URL (Firebase).
 - **Constraints:** Max 1GB, 60 minutes for Reels. Aspect ratio 9:16.
 - **Dev Requirements:** Meta App with Instagram Graph API enabled, Advanced Access required for public use.
+- **Token Lifecycle Pipeline:** 
+  - Detailed short-to-long-lived user access token exchange (`/oauth/access_token?grant_type=fb_exchange_token`).
+  - Page Access Token retrieval (`GET /me/accounts`) and infinite non-expiring Page tokens storage.
+  - Instagram Business / Creator Account mapping (`GET /{page_id}?fields=instagram_business_account`).
+  - Multi-page/multi-account selection state management in Firestore (`users/{uid}/platforms/facebook` and `users/{uid}/platforms/instagram`).
+- **Reels 3-Step Publishing Pipeline:**
+  - **Step 1:** Create Reel Container (`POST /{ig_user_id}/media` with `media_type=REELS`, `video_url`, `caption`).
+  - **Step 2:** Poll Container Status (`GET /{container_id}?fields=status_code`) until `FINISHED` (handling `IN_PROGRESS`, `ERROR`, `EXPIRED`).
+  - **Step 3:** Publish Media (`POST /{ig_user_id}/media_publish` with `creation_id`).
 
 ### 8.3 TikTok (Direct Post API)
 - **Auth Endpoint:** `https://www.tiktok.com/v2/auth/authorize/`
@@ -282,6 +323,11 @@ sequenceDiagram
 - **Method:** Chunked direct upload or Pull-from-URL.
 - **Constraints:** Max 500MB, 10 minutes. Titles max 150 chars.
 - **Dev Requirements:** TikTok for Developers App, approved for Direct Post API.
+- **Direct Post 4-Step Pipeline:**
+  - **Step 1:** Init post (`POST /v2/post/publish/video/init/` with `source_info`, `post_info`).
+  - **Step 2:** Chunked upload / URL pull.
+  - **Step 3:** Privacy & controls payload (`privacy_level`, `disable_comment`, `disable_duet`, `disable_stitch`, `brand_content_toggle`).
+  - **Step 4:** Status polling (`POST /v2/post/publish/status/fetch/` with `publish_id`).
 
 ### 8.4 Facebook (Graph API)
 - **Auth Endpoint:** `https://www.facebook.com/v17.0/dialog/oauth`
@@ -290,6 +336,9 @@ sequenceDiagram
 - **Method:** Chunked upload or direct with URL.
 - **Constraints:** Max 10GB, 240 minutes.
 - **Dev Requirements:** Meta App with Page publishing permissions.
+- **Video Publishing Pipeline:**
+  - Page Video Upload (`POST /{page_id}/videos` with `title`, `description`, `file_url` or resumable upload).
+  - Extract permalink URL (`https://facebook.com/{video_id}`) and save post record to Firestore (`users/{uid}/posts/fb_{video_id}`).
 
 ### 8.5 X (Twitter) (API v2)
 - **Auth Endpoint:** `https://twitter.com/i/oauth2/authorize`

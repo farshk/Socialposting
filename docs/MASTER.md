@@ -59,7 +59,7 @@ A single command center for video content creators to manage their entire social
 |---|---|---|---|---|
 | F000 | Core App Shell (Dashboard, Composer, Scheduler, AI Studio, Accounts) | ✅ Complete | — | Sprint 1 |
 | F001 | User Authentication (Google OAuth + Email/Password) | 🟡 BA Approved — Dev Ready | [F001-auth.md](./features/F001-auth.md) | Sprint 2 |
-| F002 | Real Social Media API Integrations | 🔵 In Requirements | [F002-social-apis.md](./features/F002-social-apis.md) | Sprint 3 |
+| F002 | Real Social Media API Integrations | 🔵 In Requirements (Phase 2/3 Docs Added) | [F002-social-apis.md](./features/F002-social-apis.md) | Sprint 3 |
 | F003 | Analytics Dashboard | 📋 Planned | — | Sprint 4 |
 | F004 | Bulk Scheduling (CSV Import) | 📋 Planned | — | Sprint 5 |
 | F005 | AI Thumbnail Generator | 📋 Planned | — | Sprint 6 |
@@ -216,3 +216,4 @@ All agents working on this project MUST:
 | 2026-07-19 | Dev Agent | F002-YouTube: Backend proxy server created (server/), YouTube OAuth, token storage in Firestore, resumable video upload, frontend js/youtube.js module |
 | 2026-07-26 | BA Agent | Added FR-028 to FR-030, AC-023 to AC-025, and TS-012 for real YouTube channel stats & published videos viewer in F002 BRD and QA report |
 | 2026-07-26 | BA Agent | Added FR-031 to FR-035, AC-026 to AC-030, and TS-013 for New Post Video Publishing flow in F002 BRD and QA report |
+| 2026-07-26 | BA Agent | Updated F002-social-apis.md, F002-social-apis-test-report.md, APIS.md, and MASTER.md with Meta and TikTok API pipeline specifications and QA test suites (Phase 2 & 3). |
