@@ -128,57 +128,96 @@ const YouTube = (function() {
     }
   }
 
+  /**
+   * upload(videoFile, metadata, onProgress)
+   * Direct browser-to-YouTube upload — no Firebase Storage needed.
+   * Step 1: Ask backend to initiate a YouTube resumable upload session (returns uploadUrl).
+   * Step 2: Browser uploads the file directly to that URL via XHR with progress tracking.
+   * Step 3: Confirm with backend to save post record to Firestore.
+   */
   async function upload(videoFile, metadata, onProgress) {
-    try {
-      const user = firebase.auth().currentUser;
-      const storageRef = firebase.storage().ref();
-      const fileRef = storageRef.child(`temp_uploads/${user.uid}/${Date.now()}_${videoFile.name}`);
-      
-      const uploadTask = fileRef.put(videoFile);
-      
-      await new Promise((resolve, reject) => {
-        uploadTask.on('state_changed', 
-          (snapshot) => {
-            if (onProgress) {
-              const percentage = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-              onProgress(percentage);
-            }
-          },
-          (error) => reject(error),
-          () => resolve()
-        );
-      });
+    const token = await getFirebaseIdToken();
 
-      const downloadUrl = await fileRef.getDownloadURL();
+    // Step 1: Get a resumable upload URL from the backend
+    const initiateRes = await fetch(`${BACKEND_URL}/api/youtube/initiate-upload`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        title: metadata.title,
+        description: metadata.description || '',
+        tags: metadata.tags || [],
+        privacyStatus: metadata.privacyStatus || 'public',
+        contentType: videoFile.type || 'video/mp4'
+      })
+    });
 
-      const token = await getFirebaseIdToken();
-      const res = await fetch(`${BACKEND_URL}/api/youtube/upload`, {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          firebaseStorageUrl: downloadUrl,
-          title: metadata.title,
-          description: metadata.description,
-          tags: metadata.tags || [],
-          privacyStatus: metadata.privacyStatus || 'public'
-        })
-      });
-      
-      const data = await res.json();
-      if (data.success) {
-        fileRef.delete().catch(e => console.warn('Storage cleanup failed:', e));
-        return { success: true, videoId: data.videoId, videoUrl: data.videoUrl };
-      } else {
-        throw new Error(data.error || 'Upload failed');
-      }
-    } catch (err) {
-      console.error('YouTube upload failed:', err);
-      throw err;
+    const initiateData = await initiateRes.json();
+    if (!initiateData.success || !initiateData.uploadUrl) {
+      throw new Error(initiateData.error || 'Failed to initiate YouTube upload');
     }
+
+    const uploadUrl = initiateData.uploadUrl;
+
+    // Step 2: Upload the video file DIRECTLY to YouTube via XHR with real progress
+    const videoId = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', uploadUrl, true);
+      xhr.setRequestHeader('Content-Type', videoFile.type || 'video/mp4');
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          onProgress(pct);
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status === 200 || xhr.status === 201) {
+          try {
+            const responseData = JSON.parse(xhr.responseText);
+            resolve(responseData.id);
+          } catch (e) {
+            reject(new Error('YouTube upload succeeded but could not parse response'));
+          }
+        } else {
+          reject(new Error(`YouTube upload failed with status ${xhr.status}: ${xhr.responseText}`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Network error during YouTube upload'));
+      xhr.onabort = () => reject(new Error('YouTube upload was aborted'));
+
+      xhr.send(videoFile);
+    });
+
+    if (!videoId) throw new Error('YouTube did not return a video ID');
+
+    // Step 3: Confirm with backend to save post record to Firestore
+    const confirmRes = await fetch(`${BACKEND_URL}/api/youtube/confirm-upload`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        videoId,
+        title: metadata.title,
+        description: metadata.description || '',
+        tags: metadata.tags || []
+      })
+    });
+
+    const confirmData = await confirmRes.json();
+    return {
+      success: true,
+      videoId,
+      videoUrl: confirmData.videoUrl || `https://www.youtube.com/watch?v=${videoId}`
+    };
   }
+
 
   function init() {
     const connectBtn = document.getElementById('youtube-connect-btn');

@@ -208,8 +208,113 @@ async function axiosWithRetry(config, maxRetries = 3) {
 }
 
 /**
+ * POST /api/youtube/initiate-upload
+ * Creates a YouTube resumable upload session and returns the upload URL to the browser.
+ * The browser then uploads the video file DIRECTLY to YouTube (no Firebase Storage needed).
+ */
+router.post('/initiate-upload', verifyAuth, async (req, res) => {
+  const { title, description, tags, privacyStatus, contentType } = req.body;
+
+  try {
+    let tokens = await getTokens(req.uid, 'youtube');
+    if (!tokens || !tokens.accessToken) {
+      return res.status(401).json({ success: false, error: 'YouTube not connected', code: 'NOT_CONNECTED' });
+    }
+
+    if (isTokenExpired(tokens) && tokens.refreshToken) {
+      const refreshRes = await axios.post('https://oauth2.googleapis.com/token', {
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET,
+        refresh_token: tokens.refreshToken,
+        grant_type: 'refresh_token'
+      });
+      tokens.accessToken = refreshRes.data.access_token;
+      tokens.expiresAt = Date.now() + (refreshRes.data.expires_in * 1000);
+      await saveTokens(req.uid, 'youtube', tokens);
+    }
+
+    const metadata = {
+      snippet: {
+        title: title || 'Untitled',
+        description: description || '',
+        tags: tags || []
+      },
+      status: {
+        privacyStatus: privacyStatus || 'public'
+      }
+    };
+
+    const initRes = await axios.post(
+      'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
+      metadata,
+      {
+        headers: {
+          'Authorization': `Bearer ${tokens.accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Upload-Content-Type': contentType || 'video/mp4'
+        }
+      }
+    );
+
+    const uploadUrl = initRes.headers.location;
+    if (!uploadUrl) {
+      return res.status(500).json({ success: false, error: 'YouTube did not return an upload URL', code: 'NO_UPLOAD_URL' });
+    }
+
+    res.json({ success: true, uploadUrl });
+  } catch (error) {
+    console.error('Initiate upload error:', error.response?.data || error.message);
+    if (error.response?.data?.error?.errors?.[0]?.reason === 'quotaExceeded') {
+      return res.status(403).json({ success: false, error: 'YouTube API quota exceeded', code: 'QUOTA_EXCEEDED' });
+    }
+    res.status(500).json({ success: false, error: 'Failed to initiate YouTube upload', code: 'INITIATE_FAILED' });
+  }
+});
+
+/**
+ * POST /api/youtube/confirm-upload
+ * Called by browser after direct YouTube upload completes. Saves post record to Firestore.
+ */
+router.post('/confirm-upload', verifyAuth, async (req, res) => {
+  const { videoId, title, description, tags } = req.body;
+  if (!videoId) {
+    return res.status(400).json({ success: false, error: 'videoId is required', code: 'MISSING_PARAMS' });
+  }
+
+  try {
+    const { db } = require('../services/firebaseAdmin');
+    if (db) {
+      const postId = `yt_${videoId}`;
+      await db.doc(`users/${req.uid}/posts/${postId}`).set({
+        id: postId,
+        title: title || 'Untitled',
+        description: description || '',
+        tags: tags || [],
+        platforms: ['youtube'],
+        status: 'published',
+        publishedAt: new Date().toISOString(),
+        videoId,
+        videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        platformId: 'youtube',
+        createdAt: Date.now()
+      });
+    }
+
+    res.json({
+      success: true,
+      videoId,
+      videoUrl: `https://www.youtube.com/watch?v=${videoId}`
+    });
+  } catch (error) {
+    console.error('Confirm upload error:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to save post record', code: 'CONFIRM_FAILED' });
+  }
+});
+
+/**
  * POST /api/youtube/upload
- * Initiates resumable upload from Firebase Storage URL to YouTube
+ * Legacy: Initiates resumable upload from Firebase Storage URL to YouTube
+ * Kept for backwards compatibility
  */
 router.post('/upload', verifyAuth, async (req, res) => {
   const { firebaseStorageUrl, title, description, tags, privacyStatus } = req.body;
