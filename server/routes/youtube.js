@@ -287,8 +287,13 @@ router.post('/initiate-upload', verifyAuth, async (req, res) => {
 router.post('/upload-chunk', verifyAuth, async (req, res) => {
   const { uploadUrl, chunk, start, end, total, contentType } = req.body;
 
+  // Diagnostic: log body size to confirm body parser received the chunk
+  const bodyKeys = req.body ? Object.keys(req.body) : [];
+  const chunkLen = chunk ? chunk.length : 0;
+  console.log(`[upload-chunk] start=${start} end=${end} total=${total} chunkB64Len=${chunkLen} bodyKeys=${bodyKeys.join(',')}`);
+
   if (!uploadUrl || chunk === undefined || start === undefined || end === undefined || total === undefined) {
-    return res.status(400).json({ success: false, error: 'Missing required fields', code: 'MISSING_PARAMS' });
+    return res.status(400).json({ success: false, error: 'Missing required fields', code: 'MISSING_PARAMS', debug: { hasUploadUrl: !!uploadUrl, hasChunk: chunk !== undefined, hasStart: start !== undefined, hasEnd: end !== undefined, hasTotal: total !== undefined } });
   }
 
   try {
@@ -312,6 +317,7 @@ router.post('/upload-chunk', verifyAuth, async (req, res) => {
     // Decode base64 chunk to binary Buffer
     const chunkBuffer = Buffer.from(chunk, 'base64');
     const chunkEnd = end - 1; // Content-Range is inclusive
+    console.log(`[upload-chunk] Decoded buffer size: ${chunkBuffer.length} bytes, sending Content-Range: bytes ${start}-${chunkEnd}/${total}`);
 
     // Forward chunk to YouTube resumable upload URL
     const youtubeRes = await axios.put(uploadUrl, chunkBuffer, {
@@ -326,15 +332,15 @@ router.post('/upload-chunk', verifyAuth, async (req, res) => {
       validateStatus: (status) => [200, 201, 308].includes(status)
     });
 
+    console.log(`[upload-chunk] YouTube responded: ${youtubeRes.status}`);
+
     if (youtubeRes.status === 308) {
-      // YouTube wants more chunks
       const rangeHeader = youtubeRes.headers['range'] || '';
       const nextByte = rangeHeader ? parseInt(rangeHeader.split('-')[1], 10) + 1 : end;
       return res.json({ success: true, status: 'incomplete', nextByte });
     }
 
     if (youtubeRes.status === 200 || youtubeRes.status === 201) {
-      // Upload complete — YouTube returns the video resource
       const videoId = youtubeRes.data.id;
       return res.json({ success: true, status: 'complete', videoId });
     }
@@ -342,8 +348,15 @@ router.post('/upload-chunk', verifyAuth, async (req, res) => {
     return res.status(500).json({ success: false, error: `Unexpected YouTube response: ${youtubeRes.status}` });
 
   } catch (error) {
-    console.error('Chunk upload error:', error.response?.data || error.message);
-    res.status(500).json({ success: false, error: 'Failed to forward chunk to YouTube', code: 'CHUNK_FAILED' });
+    const ytError = error.response?.data;
+    const errMsg = ytError ? JSON.stringify(ytError) : error.message;
+    console.error('[upload-chunk] Error:', errMsg);
+    res.status(500).json({
+      success: false,
+      error: errMsg,
+      code: 'CHUNK_FAILED',
+      ytStatus: error.response?.status
+    });
   }
 });
 

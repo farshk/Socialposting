@@ -14,7 +14,10 @@ app.use(cors({
   },
   credentials: true
 }));
+// Body parser — 6mb limit to accommodate 2MB video chunks encoded as base64 (~2.7MB JSON)
+// Must be set BEFORE routes are registered
 app.use(express.json({ limit: '6mb' }));
+app.use(express.urlencoded({ extended: true, limit: '6mb' }));
 
 // Health Check
 app.get('/health', (req, res) => {
@@ -24,10 +27,15 @@ app.get('/health', (req, res) => {
 // Routes
 app.use('/api/youtube', youtubeRoutes);
 
-// Error Handling Middleware
+// Error Handling Middleware — exposes actual error for debugging
 app.use((err, req, res, next) => {
-  console.error('[Redacted] Error:', err.message);
-  res.status(500).json({ success: false, error: 'Internal Server Error', code: 'INTERNAL_ERROR' });
+  const statusCode = err.status || err.statusCode || 500;
+  const message = err.message || 'Internal Server Error';
+  console.error(`[Server Error] ${req.method} ${req.path} → ${statusCode}: ${message}`);
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ success: false, error: 'Request body too large. Try a smaller file.', code: 'PAYLOAD_TOO_LARGE' });
+  }
+  res.status(statusCode).json({ success: false, error: message, code: err.code || 'INTERNAL_ERROR' });
 });
 
 if (require.main === module) {
