@@ -180,13 +180,30 @@ const Meta = (function() {
 
     if (platform === 'meta') {
       if (status === 'connected') {
-        App.toast('Meta connected successfully!', 'success');
+        const checkIg = async () => {
+          try {
+            const token = await getFirebaseIdToken();
+            const res = await fetch(`${BACKEND_URL}/api/meta/status`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (data && data.instagram && data.instagram.connected) {
+              App.toast('🎉 Facebook & Instagram connected successfully!', 'success', 5000);
+            } else {
+              App.toast('Facebook connected! To connect Instagram, link an Instagram Business/Creator account to your Facebook Page.', 'info', 6000);
+            }
+          } catch (e) {
+            App.toast('Meta connected successfully!', 'success');
+          }
+        };
+        checkIg();
         window.history.replaceState({}, document.title, window.location.pathname);
       } else if (status === 'error') {
         App.toast(message || 'Failed to connect Meta', 'error');
         window.history.replaceState({}, document.title, window.location.pathname);
       }
     }
+
 
     firebase.auth().onAuthStateChanged(user => {
       if (user) {
