@@ -123,6 +123,9 @@ router.get('/callback', async (req, res) => {
     if (db) {
       await db.doc(`users/${uid}/platforms/meta`).set(metaData);
     } else {
+      await saveTokens(uid, 'meta', metaData);
+    }
+
     // Dynamically calculate redirect URL so it redirects back to socialposting-eight.vercel.app on production
     const host = req.headers['x-forwarded-host'] || req.headers.host;
     const protocol = req.headers['x-forwarded-proto'] || 'https';
@@ -141,8 +144,8 @@ router.get('/callback', async (req, res) => {
     const baseUrl = process.env.FRONTEND_URL || `${protocol}://${host}`;
     res.redirect(`${baseUrl}/index.html?platform=meta&status=error&message=${encodeURIComponent(err.message || 'Callback failed')}`);
   }
-
 });
+
 
 /**
  * GET /api/meta/status
