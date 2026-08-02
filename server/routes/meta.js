@@ -123,15 +123,25 @@ router.get('/callback', async (req, res) => {
     if (db) {
       await db.doc(`users/${uid}/platforms/meta`).set(metaData);
     } else {
-      // Fallback to memory store if db is not available in mock setup
-      await saveTokens(uid, 'meta', metaData);
+    // Dynamically calculate redirect URL so it redirects back to socialposting-eight.vercel.app on production
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const baseUrl = process.env.FRONTEND_URL || `${protocol}://${host}`;
+
+    if (pages.length === 0) {
+      console.warn('Meta OAuth callback: No Facebook Pages found for this user.');
+      return res.redirect(`${baseUrl}/index.html?platform=meta&status=error&message=${encodeURIComponent('No Facebook Pages found. Please create a Facebook Page on your Meta account first.')}`);
     }
 
-    res.redirect(`${FRONTEND_URL}/index.html?platform=meta&status=connected`);
+    res.redirect(`${baseUrl}/index.html?platform=meta&status=connected`);
   } catch (err) {
     console.error('Error in Meta callback:', err.response?.data || err.message);
-    res.redirect(`${FRONTEND_URL}/index.html?platform=meta&status=error`);
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const baseUrl = process.env.FRONTEND_URL || `${protocol}://${host}`;
+    res.redirect(`${baseUrl}/index.html?platform=meta&status=error&message=${encodeURIComponent(err.message || 'Callback failed')}`);
   }
+
 });
 
 /**
