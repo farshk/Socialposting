@@ -1159,6 +1159,10 @@ const AccountsPage = {
       YouTube.connect();
       return;
     }
+    if ((platformId === 'facebook' || platformId === 'instagram') && typeof Meta !== 'undefined') {
+      Meta.connect();
+      return;
+    }
 
     const p = PLATFORMS[platformId];
     App.openModal(`Connect ${p.name}`, `
@@ -1183,6 +1187,11 @@ const AccountsPage = {
     if (platformId === 'youtube' && typeof YouTube !== 'undefined') {
       App.closeModal();
       YouTube.connect();
+      return;
+    }
+    if ((platformId === 'facebook' || platformId === 'instagram') && typeof Meta !== 'undefined') {
+      App.closeModal();
+      Meta.connect();
       return;
     }
 
@@ -1222,6 +1231,12 @@ const AccountsPage = {
       YouTube.disconnect();
       return;
     }
+    if ((platformId === 'facebook' || platformId === 'instagram') && typeof Meta !== 'undefined') {
+      App.closeModal();
+      Meta.disconnect();
+      return;
+    }
+
 
     const acc = Data.getAccount(platformId);
     if (acc) {

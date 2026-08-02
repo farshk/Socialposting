@@ -8,8 +8,8 @@ const ACCOUNTS_KEY = 'viralify_accounts';
 
 // ---- Default mock accounts ----
 const DEFAULT_ACCOUNTS = [
-  { platformId: 'youtube',   connected: true,  username: '@farrukhcreates', followers: 24800, posts: 142 },
-  { platformId: 'instagram', connected: true,  username: '@farrukh.life',   followers: 18400, posts: 287 },
+  { platformId: 'youtube',   connected: false, username: '',                followers: 0,     posts: 0   },
+  { platformId: 'instagram', connected: false, username: '',                followers: 0,     posts: 0   },
   { platformId: 'tiktok',    connected: true,  username: '@farrukhfk',      followers: 52300, posts: 94  },
   { platformId: 'facebook',  connected: false, username: '',                followers: 0,     posts: 0   },
   { platformId: 'x',         connected: true,  username: '@farrukhsheikh',  followers: 3200,  posts: 512 },
@@ -18,6 +18,10 @@ const DEFAULT_ACCOUNTS = [
   { platformId: 'linkedin',  connected: false, username: '',                followers: 0,     posts: 0   },
   { platformId: 'snapchat',  connected: false, username: '',                followers: 0,     posts: 0   },
 ];
+
+// ---- Default mock posts ----
+// (Keep posts array as is below)
+
 
 // ---- Default mock posts ----
 const DEFAULT_POSTS = [
@@ -94,20 +98,29 @@ const Data = {
     if (!localStorage.getItem(ACCOUNTS_KEY)) {
       localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(DEFAULT_ACCOUNTS));
     } else {
-      // Auto-sanitize legacy mock YouTube account from prior browser sessions
+      // Auto-sanitize legacy mock accounts from prior browser sessions
       try {
         const accounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || '[]');
-        const yt = accounts.find(a => a.platformId === 'youtube');
-        if (yt && (yt.username === '@farrukhcreates' || yt.username === '@viralify_youtube')) {
-          yt.connected = false;
-          yt.username = '';
-          yt.followers = 0;
-          yt.posts = 0;
+        let changed = false;
+        
+        ['youtube', 'facebook', 'instagram'].forEach(pid => {
+          const acc = accounts.find(a => a.platformId === pid);
+          if (acc && (acc.username === '@farrukhcreates' || acc.username === '@farrukh.life' || acc.username.startsWith('@viralify_'))) {
+            acc.connected = false;
+            acc.username = '';
+            acc.followers = 0;
+            acc.posts = 0;
+            changed = true;
+          }
+        });
+
+        if (changed) {
           localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
         }
       } catch (e) {
         console.error('Account sanitization error:', e);
       }
+
     }
   },
 
