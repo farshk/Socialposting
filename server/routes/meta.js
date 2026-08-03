@@ -213,6 +213,46 @@ router.get('/status', verifyAuth, async (req, res) => {
 });
 
 /**
+ * GET /api/meta/debug
+ * Diagnostic endpoint to inspect raw Meta permissions and Graph API responses
+ */
+router.get('/debug', verifyAuth, async (req, res) => {
+  try {
+    const { db } = require('../services/firebaseAdmin');
+    let metaData = null;
+    if (db) {
+      const doc = await db.doc(`users/${req.uid}/platforms/meta`).get();
+      if (doc.exists) metaData = doc.data();
+    } else {
+      metaData = await getTokens(req.uid, 'meta');
+    }
+
+    if (!metaData || !metaData.accessToken) {
+      return res.json({ success: false, error: 'Not connected to Meta' });
+    }
+
+    const token = metaData.accessToken;
+
+    const [permRes, meRes, accRes] = await Promise.all([
+      axios.get(`https://graph.facebook.com/${fbApiVersion}/me/permissions`, { params: { access_token: token } }).catch(e => ({ data: e.response?.data || e.message })),
+      axios.get(`https://graph.facebook.com/${fbApiVersion}/me`, { params: { fields: 'id,name', access_token: token } }).catch(e => ({ data: e.response?.data || e.message })),
+      axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, { params: { fields: 'id,name,category,instagram_business_account{id,username}', access_token: token } }).catch(e => ({ data: e.response?.data || e.message }))
+    ]);
+
+    res.json({
+      success: true,
+      permissions: permRes.data,
+      user: meRes.data,
+      accounts: accRes.data,
+      storedPages: metaData.pages || []
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
+/**
  * POST /api/meta/select-page
  */
 router.post('/select-page', verifyAuth, async (req, res) => {

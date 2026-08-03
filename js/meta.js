@@ -212,6 +212,20 @@ const Meta = (function() {
     });
   }
 
+  async function debug() {
+    try {
+      const token = await getFirebaseIdToken();
+      const res = await fetch(`${BACKEND_URL}/api/meta/debug`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      console.log('--- META DEBUG DATA ---', data);
+      return data;
+    } catch (err) {
+      console.error('Meta debug failed:', err);
+    }
+  }
+
   return {
     init,
     checkStatus,
@@ -219,9 +233,11 @@ const Meta = (function() {
     disconnect,
     getPosts,
     publishFacebook,
-    publishInstagram
+    publishInstagram,
+    debug
   };
 })();
+
 
 document.addEventListener('DOMContentLoaded', () => {
   if (window.FIREBASE_READY) {
