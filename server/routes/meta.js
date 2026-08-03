@@ -75,36 +75,50 @@ router.get('/callback', async (req, res) => {
     });
     const longLivedToken = longTokenRes.data.access_token;
 
-    // 3. Fetch User's Facebook Pages & Page Access Tokens
+    // 3. Fetch User's Facebook Pages & Linked Instagram Business Accounts directly
     const accountsRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, {
-      params: { access_token: longLivedToken }
+      params: {
+        fields: 'id,name,access_token,instagram_business_account{id,username,followers_count,media_count}',
+        access_token: longLivedToken
+      }
     });
-    
-    let pages = accountsRes.data.data || [];
-    
-    // 4. For each Page, check associated Instagram account
+
+    let pagesData = accountsRes.data.data || [];
+    let pages = pagesData.map(p => {
+      const pageObj = {
+        id: p.id,
+        name: p.name,
+        access_token: p.access_token
+      };
+      if (p.instagram_business_account) {
+        pageObj.instagram_business_account = p.instagram_business_account.id;
+        pageObj.ig_username = p.instagram_business_account.username || null;
+        pageObj.ig_followers = p.instagram_business_account.followers_count || 0;
+        pageObj.ig_media_count = p.instagram_business_account.media_count || 0;
+      }
+      return pageObj;
+    });
+
+    // Fallback: If nested graph query didn't return IG account, try querying each page ID explicitly
     for (let page of pages) {
-      try {
-        const igRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/${page.id}`, {
-          params: { fields: 'instagram_business_account', access_token: page.access_token }
-        });
-        if (igRes.data && igRes.data.instagram_business_account) {
-          page.instagram_business_account = igRes.data.instagram_business_account.id;
-          
-          // Fetch IG username
-          const igUserRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/${page.instagram_business_account}`, {
-             params: { fields: 'username', access_token: page.access_token }
+      if (!page.instagram_business_account) {
+        try {
+          const igRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/${page.id}`, {
+            params: { fields: 'instagram_business_account{id,username,followers_count,media_count}', access_token: page.access_token }
           });
-          if (igUserRes.data && igUserRes.data.username) {
-             page.ig_username = igUserRes.data.username;
+          if (igRes.data && igRes.data.instagram_business_account) {
+            page.instagram_business_account = igRes.data.instagram_business_account.id;
+            page.ig_username = igRes.data.instagram_business_account.username || null;
+            page.ig_followers = igRes.data.instagram_business_account.followers_count || 0;
+            page.ig_media_count = igRes.data.instagram_business_account.media_count || 0;
           }
+        } catch(e) {
+          console.warn(`Fallback IG fetch for page ${page.id}:`, e.message);
         }
-      } catch(e) {
-        console.warn(`Failed to fetch IG account for page ${page.id}:`, e.message);
       }
     }
 
-    // Determine selected page (default to first one with IG if possible, or just first)
+    // Determine selected page (prioritize page with connected Instagram account)
     let selectedPageId = null;
     if (pages.length > 0) {
       const pageWithIg = pages.find(p => p.instagram_business_account);
@@ -118,7 +132,7 @@ router.get('/callback', async (req, res) => {
       selectedPageId,
       updatedAt: Date.now()
     };
-    
+
     const { db } = require('../services/firebaseAdmin');
     if (db) {
       await db.doc(`users/${uid}/platforms/meta`).set(metaData);
@@ -166,7 +180,8 @@ router.get('/status', verifyAuth, async (req, res) => {
     }
 
     const { pages = [], selectedPageId } = metaData;
-    const selectedPage = pages.find(p => p.id === selectedPageId) || pages[0];
+    const pageWithIg = pages.find(p => p.instagram_business_account);
+    const selectedPage = pages.find(p => p.id === selectedPageId) || pageWithIg || pages[0];
 
     const facebook = {
       connected: !!selectedPage,
@@ -175,10 +190,13 @@ router.get('/status', verifyAuth, async (req, res) => {
     };
 
     const instagram = {
-      connected: selectedPage && !!selectedPage.instagram_business_account,
-      username: selectedPage ? selectedPage.ig_username : null,
-      igUserId: selectedPage ? selectedPage.instagram_business_account : null
+      connected: !!(pageWithIg || (selectedPage && selectedPage.instagram_business_account)),
+      username: (selectedPage && selectedPage.ig_username) || (pageWithIg && pageWithIg.ig_username) || null,
+      igUserId: (selectedPage && selectedPage.instagram_business_account) || (pageWithIg && pageWithIg.instagram_business_account) || null,
+      followers: (selectedPage && selectedPage.ig_followers) || (pageWithIg && pageWithIg.ig_followers) || 0,
+      posts: (selectedPage && selectedPage.ig_media_count) || (pageWithIg && pageWithIg.ig_media_count) || 0
     };
+
 
     res.json({
       success: true,
@@ -291,11 +309,12 @@ router.get('/instagram/metrics', verifyAuth, async (req, res) => {
       metaData = await getTokens(req.uid, 'meta');
     }
 
-    if (!metaData) return res.status(400).json({ success: false, error: 'Not connected to Meta' });
-    const selectedPage = metaData.pages.find(p => p.id === metaData.selectedPageId) || metaData.pages[0];
+    const pageWithIg = metaData.pages.find(p => p.instagram_business_account);
+    const selectedPage = metaData.pages.find(p => p.id === metaData.selectedPageId) || pageWithIg || metaData.pages[0];
     if (!selectedPage || !selectedPage.instagram_business_account) {
       return res.status(400).json({ success: false, error: 'No Instagram account selected' });
     }
+
 
     const igRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/${selectedPage.instagram_business_account}`, {
       params: { fields: 'followers_count,media_count,username', access_token: selectedPage.access_token }
