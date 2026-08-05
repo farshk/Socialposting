@@ -75,48 +75,47 @@ router.get('/callback', async (req, res) => {
     });
     const longLivedToken = longTokenRes.data.access_token;
 
-    // 3. Fetch User's Facebook Pages & Linked Instagram Business Accounts directly
-    const accountsRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, {
-      params: {
-        fields: 'id,name,access_token,instagram_business_account{id,username,followers_count,media_count}',
-        access_token: longLivedToken
-      }
-    });
-
-    let pagesData = accountsRes.data.data || [];
-    let pages = pagesData.map(p => {
-      const pageObj = {
-        id: p.id,
-        name: p.name,
-        access_token: p.access_token
-      };
-      if (p.instagram_business_account) {
-        pageObj.instagram_business_account = p.instagram_business_account.id;
-        pageObj.ig_username = p.instagram_business_account.username || null;
-        pageObj.ig_followers = p.instagram_business_account.followers_count || 0;
-        pageObj.ig_media_count = p.instagram_business_account.media_count || 0;
-      }
-      return pageObj;
-    });
-
-    // Fallback: If nested graph query didn't return IG account, try querying each page ID explicitly
-    for (let page of pages) {
-      if (!page.instagram_business_account) {
-        try {
-          const igRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/${page.id}`, {
-            params: { fields: 'instagram_business_account{id,username,followers_count,media_count}', access_token: page.access_token }
-          });
-          if (igRes.data && igRes.data.instagram_business_account) {
-            page.instagram_business_account = igRes.data.instagram_business_account.id;
-            page.ig_username = igRes.data.instagram_business_account.username || null;
-            page.ig_followers = igRes.data.instagram_business_account.followers_count || 0;
-            page.ig_media_count = igRes.data.instagram_business_account.media_count || 0;
-          }
-        } catch(e) {
-          console.warn(`Fallback IG fetch for page ${page.id}:`, e.message);
+    // 3. Fetch User's Facebook Pages & Page Access Tokens (safe query)
+    let pagesData = [];
+    try {
+      const accountsRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, {
+        params: {
+          fields: 'id,name,access_token,category',
+          access_token: longLivedToken
         }
+      });
+      pagesData = accountsRes.data.data || [];
+    } catch (e) {
+      console.error('Error fetching /me/accounts:', e.response?.data || e.message);
+    }
+
+    let pages = pagesData.map(p => ({
+      id: p.id,
+      name: p.name,
+      access_token: p.access_token,
+      category: p.category
+    }));
+
+    // 4. For each Page, check associated Instagram Business Account safely
+    for (let page of pages) {
+      try {
+        const igRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/${page.id}`, {
+          params: {
+            fields: 'instagram_business_account{id,username,followers_count,media_count}',
+            access_token: page.access_token
+          }
+        });
+        if (igRes.data && igRes.data.instagram_business_account) {
+          page.instagram_business_account = igRes.data.instagram_business_account.id;
+          page.ig_username = igRes.data.instagram_business_account.username || null;
+          page.ig_followers = igRes.data.instagram_business_account.followers_count || 0;
+          page.ig_media_count = igRes.data.instagram_business_account.media_count || 0;
+        }
+      } catch(e) {
+        console.warn(`IG fetch for page ${page.id} (${page.name}):`, e.response?.data || e.message);
       }
     }
+
 
     // Determine selected page (prioritize page with connected Instagram account)
     let selectedPageId = null;
