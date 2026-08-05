@@ -75,19 +75,32 @@ router.get('/callback', async (req, res) => {
     });
     const longLivedToken = longTokenRes.data.access_token;
 
-    // 3. Fetch User's Facebook Pages & Page Access Tokens
+    // 3. Fetch User's Facebook Pages (Try shortLivedToken first, fallback to longLivedToken)
     let pagesData = [];
     let accountsErr = null;
     try {
       const accountsRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, {
-        headers: { 'Authorization': `Bearer ${longLivedToken}` },
+        headers: { 'Authorization': `Bearer ${shortLivedToken}` },
         params: { fields: 'id,name,access_token,category' }
       });
       pagesData = accountsRes.data.data || [];
     } catch (e) {
-      accountsErr = e.response?.data?.error?.message || e.message;
-      console.error('Error fetching /me/accounts:', e.response?.data || e.message);
+      console.warn('Failed /me/accounts with shortLivedToken:', e.response?.data || e.message);
     }
+
+    if (pagesData.length === 0) {
+      try {
+        const accountsRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, {
+          headers: { 'Authorization': `Bearer ${longLivedToken}` },
+          params: { fields: 'id,name,access_token,category' }
+        });
+        pagesData = accountsRes.data.data || [];
+      } catch (e) {
+        accountsErr = e.response?.data?.error?.message || e.message;
+        console.error('Failed /me/accounts with longLivedToken:', e.response?.data || e.message);
+      }
+    }
+
 
     const host = req.headers['x-forwarded-host'] || req.headers.host;
     const protocol = req.headers['x-forwarded-proto'] || 'https';
