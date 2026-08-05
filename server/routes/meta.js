@@ -75,18 +75,28 @@ router.get('/callback', async (req, res) => {
     });
     const longLivedToken = longTokenRes.data.access_token;
 
-    // 3. Fetch User's Facebook Pages & Page Access Tokens (safe query)
+    // 3. Fetch User's Facebook Pages & Page Access Tokens
     let pagesData = [];
+    let accountsErr = null;
     try {
       const accountsRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, {
-        params: {
-          fields: 'id,name,access_token,category',
-          access_token: longLivedToken
-        }
+        headers: { 'Authorization': `Bearer ${longLivedToken}` },
+        params: { fields: 'id,name,access_token,category' }
       });
       pagesData = accountsRes.data.data || [];
     } catch (e) {
+      accountsErr = e.response?.data?.error?.message || e.message;
       console.error('Error fetching /me/accounts:', e.response?.data || e.message);
+    }
+
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const baseUrl = process.env.FRONTEND_URL || `${protocol}://${host}`;
+
+    if (pagesData.length === 0) {
+      const errMsg = accountsErr ? `Meta API Error: ${accountsErr}` : 'No Facebook Pages found. Please ensure you have created a Facebook Page and selected it in the Meta login popup.';
+      console.warn('Meta OAuth callback:', errMsg);
+      return res.redirect(`${baseUrl}/index.html?platform=meta&status=error&message=${encodeURIComponent(errMsg)}`);
     }
 
     let pages = pagesData.map(p => ({
@@ -100,10 +110,8 @@ router.get('/callback', async (req, res) => {
     for (let page of pages) {
       try {
         const igRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/${page.id}`, {
-          params: {
-            fields: 'instagram_business_account{id,username,followers_count,media_count}',
-            access_token: page.access_token
-          }
+          headers: { 'Authorization': `Bearer ${page.access_token}` },
+          params: { fields: 'instagram_business_account{id,username,followers_count,media_count}' }
         });
         if (igRes.data && igRes.data.instagram_business_account) {
           page.instagram_business_account = igRes.data.instagram_business_account.id;
@@ -115,7 +123,6 @@ router.get('/callback', async (req, res) => {
         console.warn(`IG fetch for page ${page.id} (${page.name}):`, e.response?.data || e.message);
       }
     }
-
 
     // Determine selected page (prioritize page with connected Instagram account)
     let selectedPageId = null;
@@ -139,17 +146,8 @@ router.get('/callback', async (req, res) => {
       await saveTokens(uid, 'meta', metaData);
     }
 
-    // Dynamically calculate redirect URL so it redirects back to socialposting-eight.vercel.app on production
-    const host = req.headers['x-forwarded-host'] || req.headers.host;
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const baseUrl = process.env.FRONTEND_URL || `${protocol}://${host}`;
-
-    if (pages.length === 0) {
-      console.warn('Meta OAuth callback: No Facebook Pages found for this user.');
-      return res.redirect(`${baseUrl}/index.html?platform=meta&status=error&message=${encodeURIComponent('No Facebook Pages found. Please create a Facebook Page on your Meta account first.')}`);
-    }
-
     res.redirect(`${baseUrl}/index.html?platform=meta&status=connected`);
+
   } catch (err) {
     console.error('Error in Meta callback:', err.response?.data || err.message);
     const host = req.headers['x-forwarded-host'] || req.headers.host;
