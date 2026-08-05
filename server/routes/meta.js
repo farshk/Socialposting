@@ -27,6 +27,8 @@ router.get('/auth', verifyAuth, (req, res) => {
     authUrl.searchParams.set('state', stateParam);
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('scope', 'public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish');
+    // Force re-display of all permission + page selection screens on re-authorization
+    authUrl.searchParams.set('auth_type', 'rerequest');
     
     console.log('[META AUTH] Generated OAuth URL:', authUrl.toString());
     res.json({ success: true, authUrl: authUrl.toString() });
@@ -81,51 +83,26 @@ router.get('/callback', async (req, res) => {
     });
     const longLivedToken = longTokenRes.data.access_token;
 
-    // 3. Fetch User's Facebook Pages using access_token query param (matches working /debug endpoint)
+    // 3. Fetch Pages — try longLivedToken first, then shortLivedToken
     console.log('[META CALLBACK] Token exchange succeeded. Fetching /me/accounts...');
     let pagesData = [];
-    let accountsErr = null;
-    try {
-      const accountsRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, {
-        params: {
-          access_token: longLivedToken,
-          fields: 'id,name,access_token,category'
-        }
-      });
-      pagesData = accountsRes.data.data || [];
-      console.log(`[META CALLBACK] /me/accounts returned ${pagesData.length} page(s):`, pagesData.map(p => ({ id: p.id, name: p.name })));
-    } catch (e) {
-      accountsErr = e.response?.data?.error?.message || e.message;
-      console.error('[META CALLBACK] /me/accounts FAILED:', JSON.stringify(e.response?.data || e.message));
-    }
+    const tokensToTry = [
+      { token: longLivedToken, label: 'longLivedToken' },
+      { token: shortLivedToken, label: 'shortLivedToken' }
+    ];
 
-    const host = req.headers['x-forwarded-host'] || req.headers.host;
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const baseUrl = process.env.FRONTEND_URL || `${protocol}://${host}`;
-
-    if (pagesData.length === 0) {
-      // Before giving up, try one more time with the short-lived token
-      console.log('[META CALLBACK] 0 pages with longLivedToken, retrying with shortLivedToken...');
+    for (const { token, label } of tokensToTry) {
+      if (pagesData.length > 0) break;
       try {
-        const retryRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, {
-          params: {
-            access_token: shortLivedToken,
-            fields: 'id,name,access_token,category'
-          }
+        const accountsRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, {
+          params: { access_token: token, fields: 'id,name,access_token,category' }
         });
-        pagesData = retryRes.data.data || [];
-        console.log(`[META CALLBACK] Retry with shortLivedToken returned ${pagesData.length} page(s)`);
-      } catch (e2) {
-        console.error('[META CALLBACK] Retry also FAILED:', JSON.stringify(e2.response?.data || e2.message));
+        pagesData = accountsRes.data.data || [];
+        console.log(`[META CALLBACK] /me/accounts (${label}) returned ${pagesData.length} page(s):`,
+          pagesData.map(p => ({ id: p.id, name: p.name })));
+      } catch (e) {
+        console.error(`[META CALLBACK] /me/accounts (${label}) FAILED:`, JSON.stringify(e.response?.data || e.message));
       }
-    }
-
-    if (pagesData.length === 0) {
-      const errMsg = accountsErr
-        ? `Meta API Error: ${accountsErr}`
-        : 'No Facebook Pages found. Please ensure you have a Facebook Page and that you select it during the Meta login dialog.';
-      console.warn('[META CALLBACK] Final result: 0 pages. Redirecting with error.');
-      return res.redirect(`${baseUrl}/index.html?platform=meta&status=error&message=${encodeURIComponent(errMsg)}`);
     }
 
     let pages = pagesData.map(p => ({
@@ -135,7 +112,7 @@ router.get('/callback', async (req, res) => {
       category: p.category
     }));
 
-    // 4. For each Page, check associated Instagram Business Account safely
+    // 4. For each Page, check associated Instagram Business Account
     for (let page of pages) {
       try {
         const igRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/${page.id}`, {
@@ -151,22 +128,22 @@ router.get('/callback', async (req, res) => {
           page.ig_media_count = igRes.data.instagram_business_account.media_count || 0;
           console.log(`[META CALLBACK] Page ${page.name} has IG: @${page.ig_username}`);
         } else {
-          console.log(`[META CALLBACK] Page ${page.name} has no linked Instagram Business Account`);
+          console.log(`[META CALLBACK] Page ${page.name} has no linked IG Business Account`);
         }
       } catch(e) {
-        console.warn(`[META CALLBACK] IG fetch for page ${page.id} (${page.name}):`, e.response?.data || e.message);
+        console.warn(`[META CALLBACK] IG fetch for page ${page.id}:`, e.response?.data || e.message);
       }
     }
 
-
-    // Determine selected page (prioritize page with connected Instagram account)
+    // 5. Determine selected page
     let selectedPageId = null;
     if (pages.length > 0) {
       const pageWithIg = pages.find(p => p.instagram_business_account);
       selectedPageId = pageWithIg ? pageWithIg.id : pages[0].id;
     }
 
-    // Save token data and page list to Firestore at users/{uid}/platforms/meta
+    // 6. ALWAYS save the token — even if pages is empty.
+    //    A valid token with 0 pages is still useful (we can re-fetch pages later).
     const metaData = {
       accessToken: longLivedToken,
       pages,
@@ -181,7 +158,21 @@ router.get('/callback', async (req, res) => {
       await saveTokens(uid, 'meta', metaData);
     }
 
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const baseUrl = process.env.FRONTEND_URL || `${protocol}://${host}`;
+
+    if (pages.length === 0) {
+      // Token saved, but no pages found — redirect with partial success
+      console.warn('[META CALLBACK] Token saved but 0 pages. User may not have selected a page during OAuth.');
+      return res.redirect(`${baseUrl}/index.html?platform=meta&status=error&message=${encodeURIComponent(
+        'Meta connected but no Facebook Pages were shared. Please click Connect again and make sure to CHECK your Facebook Page (e.g. Rumi) in the Meta popup when it asks which pages to share with the app.'
+      )}`);
+    }
+
+    console.log(`[META CALLBACK] Success! ${pages.length} page(s) saved. Redirecting.`);
     res.redirect(`${baseUrl}/index.html?platform=meta&status=connected`);
+
 
   } catch (err) {
     console.error('Error in Meta callback:', err.response?.data || err.message);
@@ -211,7 +202,58 @@ router.get('/status', verifyAuth, async (req, res) => {
       return res.json({ connected: false });
     }
 
-    const { pages = [], selectedPageId } = metaData;
+    let { pages = [], selectedPageId } = metaData;
+
+    // AUTO-HEAL: If token exists but pages are empty, try live-fetching from Graph API
+    if (pages.length === 0 && metaData.accessToken) {
+      console.log('[META STATUS] Stored pages empty — attempting live fetch from Graph API...');
+      try {
+        const accountsRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, {
+          params: { access_token: metaData.accessToken, fields: 'id,name,access_token,category' }
+        });
+        const livePages = accountsRes.data.data || [];
+        console.log(`[META STATUS] Live fetch returned ${livePages.length} page(s)`);
+
+        if (livePages.length > 0) {
+          pages = livePages.map(p => ({
+            id: p.id,
+            name: p.name,
+            access_token: p.access_token,
+            category: p.category
+          }));
+
+          // Also fetch IG for each page
+          for (let page of pages) {
+            try {
+              const igRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/${page.id}`, {
+                params: { access_token: page.access_token, fields: 'instagram_business_account{id,username,followers_count,media_count}' }
+              });
+              if (igRes.data && igRes.data.instagram_business_account) {
+                page.instagram_business_account = igRes.data.instagram_business_account.id;
+                page.ig_username = igRes.data.instagram_business_account.username || null;
+                page.ig_followers = igRes.data.instagram_business_account.followers_count || 0;
+                page.ig_media_count = igRes.data.instagram_business_account.media_count || 0;
+              }
+            } catch(e) { /* ignore per-page IG errors */ }
+          }
+
+          const pageWithIgLive = pages.find(p => p.instagram_business_account);
+          selectedPageId = pageWithIgLive ? pageWithIgLive.id : pages[0].id;
+
+          // Persist the healed data back to Firestore
+          const healedData = { ...metaData, pages, selectedPageId, updatedAt: Date.now() };
+          if (db) {
+            await db.doc(`users/${req.uid}/platforms/meta`).set(healedData);
+          } else {
+            await saveTokens(req.uid, 'meta', healedData);
+          }
+          console.log('[META STATUS] Auto-healed: pages saved to Firestore.');
+        }
+      } catch (e) {
+        console.warn('[META STATUS] Live fetch failed:', e.response?.data || e.message);
+      }
+    }
+
     const pageWithIg = pages.find(p => p.instagram_business_account);
     const selectedPage = pages.find(p => p.id === selectedPageId) || pageWithIg || pages[0];
 
@@ -229,7 +271,6 @@ router.get('/status', verifyAuth, async (req, res) => {
       posts: (selectedPage && selectedPage.ig_media_count) || (pageWithIg && pageWithIg.ig_media_count) || 0
     };
 
-
     res.json({
       success: true,
       connected: true,
@@ -243,6 +284,7 @@ router.get('/status', verifyAuth, async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to check status' });
   }
 });
+
 
 /**
  * GET /api/meta/debug
