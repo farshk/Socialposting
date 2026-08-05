@@ -21,10 +21,16 @@ router.get('/auth', verifyAuth, (req, res) => {
     const stateObj = { uid: req.uid };
     const stateParam = Buffer.from(JSON.stringify(stateObj)).toString('base64');
     
-    const scope = encodeURIComponent('public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish');
-    const authUrl = `https://www.facebook.com/${fbApiVersion}/dialog/oauth?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${stateParam}&scope=${scope}`;
+    const authUrl = new URL(`https://www.facebook.com/${fbApiVersion}/dialog/oauth`);
+    authUrl.searchParams.set('client_id', CLIENT_ID);
+    authUrl.searchParams.set('redirect_uri', REDIRECT_URI);
+    authUrl.searchParams.set('state', stateParam);
+    authUrl.searchParams.set('response_type', 'code');
+    authUrl.searchParams.set('scope', 'public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish');
     
-    res.json({ success: true, authUrl });
+    console.log('[META AUTH] Generated OAuth URL:', authUrl.toString());
+    res.json({ success: true, authUrl: authUrl.toString() });
+
   } catch (error) {
     console.error('Error generating Meta auth URL', error.message);
     res.status(500).json({ success: false, error: 'Failed to generate auth URL', code: 'META_AUTH_GEN_FAILED' });
@@ -75,40 +81,50 @@ router.get('/callback', async (req, res) => {
     });
     const longLivedToken = longTokenRes.data.access_token;
 
-    // 3. Fetch User's Facebook Pages (Try shortLivedToken first, fallback to longLivedToken)
+    // 3. Fetch User's Facebook Pages using access_token query param (matches working /debug endpoint)
+    console.log('[META CALLBACK] Token exchange succeeded. Fetching /me/accounts...');
     let pagesData = [];
     let accountsErr = null;
     try {
       const accountsRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, {
-        headers: { 'Authorization': `Bearer ${shortLivedToken}` },
-        params: { fields: 'id,name,access_token,category' }
+        params: {
+          access_token: longLivedToken,
+          fields: 'id,name,access_token,category'
+        }
       });
       pagesData = accountsRes.data.data || [];
+      console.log(`[META CALLBACK] /me/accounts returned ${pagesData.length} page(s):`, pagesData.map(p => ({ id: p.id, name: p.name })));
     } catch (e) {
-      console.warn('Failed /me/accounts with shortLivedToken:', e.response?.data || e.message);
+      accountsErr = e.response?.data?.error?.message || e.message;
+      console.error('[META CALLBACK] /me/accounts FAILED:', JSON.stringify(e.response?.data || e.message));
     }
-
-    if (pagesData.length === 0) {
-      try {
-        const accountsRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, {
-          headers: { 'Authorization': `Bearer ${longLivedToken}` },
-          params: { fields: 'id,name,access_token,category' }
-        });
-        pagesData = accountsRes.data.data || [];
-      } catch (e) {
-        accountsErr = e.response?.data?.error?.message || e.message;
-        console.error('Failed /me/accounts with longLivedToken:', e.response?.data || e.message);
-      }
-    }
-
 
     const host = req.headers['x-forwarded-host'] || req.headers.host;
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const baseUrl = process.env.FRONTEND_URL || `${protocol}://${host}`;
 
     if (pagesData.length === 0) {
-      const errMsg = accountsErr ? `Meta API Error: ${accountsErr}` : 'No Facebook Pages found. Please ensure you have created a Facebook Page and selected it in the Meta login popup.';
-      console.warn('Meta OAuth callback:', errMsg);
+      // Before giving up, try one more time with the short-lived token
+      console.log('[META CALLBACK] 0 pages with longLivedToken, retrying with shortLivedToken...');
+      try {
+        const retryRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, {
+          params: {
+            access_token: shortLivedToken,
+            fields: 'id,name,access_token,category'
+          }
+        });
+        pagesData = retryRes.data.data || [];
+        console.log(`[META CALLBACK] Retry with shortLivedToken returned ${pagesData.length} page(s)`);
+      } catch (e2) {
+        console.error('[META CALLBACK] Retry also FAILED:', JSON.stringify(e2.response?.data || e2.message));
+      }
+    }
+
+    if (pagesData.length === 0) {
+      const errMsg = accountsErr
+        ? `Meta API Error: ${accountsErr}`
+        : 'No Facebook Pages found. Please ensure you have a Facebook Page and that you select it during the Meta login dialog.';
+      console.warn('[META CALLBACK] Final result: 0 pages. Redirecting with error.');
       return res.redirect(`${baseUrl}/index.html?platform=meta&status=error&message=${encodeURIComponent(errMsg)}`);
     }
 
@@ -123,19 +139,25 @@ router.get('/callback', async (req, res) => {
     for (let page of pages) {
       try {
         const igRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/${page.id}`, {
-          headers: { 'Authorization': `Bearer ${page.access_token}` },
-          params: { fields: 'instagram_business_account{id,username,followers_count,media_count}' }
+          params: {
+            access_token: page.access_token,
+            fields: 'instagram_business_account{id,username,followers_count,media_count}'
+          }
         });
         if (igRes.data && igRes.data.instagram_business_account) {
           page.instagram_business_account = igRes.data.instagram_business_account.id;
           page.ig_username = igRes.data.instagram_business_account.username || null;
           page.ig_followers = igRes.data.instagram_business_account.followers_count || 0;
           page.ig_media_count = igRes.data.instagram_business_account.media_count || 0;
+          console.log(`[META CALLBACK] Page ${page.name} has IG: @${page.ig_username}`);
+        } else {
+          console.log(`[META CALLBACK] Page ${page.name} has no linked Instagram Business Account`);
         }
       } catch(e) {
-        console.warn(`IG fetch for page ${page.id} (${page.name}):`, e.response?.data || e.message);
+        console.warn(`[META CALLBACK] IG fetch for page ${page.id} (${page.name}):`, e.response?.data || e.message);
       }
     }
+
 
     // Determine selected page (prioritize page with connected Instagram account)
     let selectedPageId = null;
