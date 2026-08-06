@@ -41,7 +41,8 @@ router.get('/auth', verifyAuth, (req, res) => {
 
 /**
  * GET /api/meta/callback
- * Exchanges code for tokens and fetches Pages/IG accounts
+ * Exchanges code for tokens and fetches Pages/IG accounts.
+ * Stores full diagnostic data from every API call for debugging.
  */
 router.get('/callback', async (req, res) => {
   const { code, state, error } = req.query;
@@ -49,6 +50,9 @@ router.get('/callback', async (req, res) => {
   if (error) {
     return res.redirect(`${FRONTEND_URL}/index.html?platform=meta&status=error&message=${error}`);
   }
+
+  // Diagnostic log that we'll store in Firestore for debugging
+  const diag = { steps: [], timestamp: new Date().toISOString() };
 
   try {
     let uid;
@@ -60,31 +64,47 @@ router.get('/callback', async (req, res) => {
     if (!uid) {
       throw new Error('Invalid state parameter');
     }
+    diag.uid = uid;
 
     // 1. Exchange code for short-lived user token
     const tokenRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/oauth/access_token`, {
-      params: {
-        client_id: CLIENT_ID,
-        redirect_uri: REDIRECT_URI,
-        client_secret: CLIENT_SECRET,
-        code: code
-      }
+      params: { client_id: CLIENT_ID, redirect_uri: REDIRECT_URI, client_secret: CLIENT_SECRET, code }
     });
     const shortLivedToken = tokenRes.data.access_token;
+    diag.steps.push({ step: 'code_exchange', success: true, hasToken: !!shortLivedToken });
 
     // 2. Exchange short-lived token for long-lived user token
     const longTokenRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/oauth/access_token`, {
-      params: {
-        grant_type: 'fb_exchange_token',
-        client_id: CLIENT_ID,
-        client_secret: CLIENT_SECRET,
-        fb_exchange_token: shortLivedToken
-      }
+      params: { grant_type: 'fb_exchange_token', client_id: CLIENT_ID, client_secret: CLIENT_SECRET, fb_exchange_token: shortLivedToken }
     });
     const longLivedToken = longTokenRes.data.access_token;
+    diag.steps.push({ step: 'long_token_exchange', success: true, hasToken: !!longLivedToken });
 
-    // 3. Fetch Pages — try longLivedToken first, then shortLivedToken
-    console.log('[META CALLBACK] Token exchange succeeded. Fetching /me/accounts...');
+    // 3. Verify token works — call /me
+    let meData = null;
+    try {
+      const meRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me`, {
+        params: { access_token: longLivedToken, fields: 'id,name' }
+      });
+      meData = meRes.data;
+      diag.steps.push({ step: 'me', success: true, data: meData });
+    } catch (e) {
+      diag.steps.push({ step: 'me', success: false, error: e.response?.data || e.message });
+    }
+
+    // 4. Check permissions
+    let permsData = null;
+    try {
+      const permRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/permissions`, {
+        params: { access_token: longLivedToken }
+      });
+      permsData = permRes.data?.data || [];
+      diag.steps.push({ step: 'permissions', success: true, data: permsData });
+    } catch (e) {
+      diag.steps.push({ step: 'permissions', success: false, error: e.response?.data || e.message });
+    }
+
+    // 5. Fetch Pages — try BOTH tokens, record raw responses
     let pagesData = [];
     const tokensToTry = [
       { token: longLivedToken, label: 'longLivedToken' },
@@ -92,16 +112,72 @@ router.get('/callback', async (req, res) => {
     ];
 
     for (const { token, label } of tokensToTry) {
-      if (pagesData.length > 0) break;
       try {
         const accountsRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, {
           params: { access_token: token, fields: 'id,name,access_token,category' }
         });
-        pagesData = accountsRes.data.data || [];
-        console.log(`[META CALLBACK] /me/accounts (${label}) returned ${pagesData.length} page(s):`,
-          pagesData.map(p => ({ id: p.id, name: p.name })));
+        const rawResponse = accountsRes.data;
+        diag.steps.push({
+          step: `me_accounts_${label}`,
+          success: true,
+          rawDataKeys: Object.keys(rawResponse),
+          dataLength: (rawResponse.data || []).length,
+          pages: (rawResponse.data || []).map(p => ({ id: p.id, name: p.name, category: p.category })),
+          paging: rawResponse.paging || null
+        });
+        if (pagesData.length === 0) {
+          pagesData = rawResponse.data || [];
+        }
       } catch (e) {
-        console.error(`[META CALLBACK] /me/accounts (${label}) FAILED:`, JSON.stringify(e.response?.data || e.message));
+        diag.steps.push({
+          step: `me_accounts_${label}`,
+          success: false,
+          httpStatus: e.response?.status,
+          error: e.response?.data || e.message
+        });
+      }
+    }
+
+    // 5b. Also try without specifying fields (in case fields param is causing issues)
+    if (pagesData.length === 0) {
+      try {
+        const simpleRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, {
+          params: { access_token: longLivedToken }
+        });
+        diag.steps.push({
+          step: 'me_accounts_no_fields',
+          success: true,
+          dataLength: (simpleRes.data.data || []).length,
+          rawData: simpleRes.data
+        });
+        pagesData = simpleRes.data.data || [];
+      } catch (e) {
+        diag.steps.push({
+          step: 'me_accounts_no_fields',
+          success: false,
+          error: e.response?.data || e.message
+        });
+      }
+    }
+
+    // 5c. Try directly fetching the known page ID as last resort
+    if (pagesData.length === 0) {
+      try {
+        const directRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/1216384444899314`, {
+          params: { access_token: longLivedToken, fields: 'id,name,category' }
+        });
+        diag.steps.push({
+          step: 'direct_page_fetch_1216384444899314',
+          success: true,
+          data: directRes.data
+        });
+      } catch (e) {
+        diag.steps.push({
+          step: 'direct_page_fetch_1216384444899314',
+          success: false,
+          httpStatus: e.response?.status,
+          error: e.response?.data || e.message
+        });
       }
     }
 
@@ -112,43 +188,38 @@ router.get('/callback', async (req, res) => {
       category: p.category
     }));
 
-    // 4. For each Page, check associated Instagram Business Account
+    // 6. For each Page, check associated Instagram Business Account
     for (let page of pages) {
       try {
         const igRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/${page.id}`, {
-          params: {
-            access_token: page.access_token,
-            fields: 'instagram_business_account{id,username,followers_count,media_count}'
-          }
+          params: { access_token: page.access_token, fields: 'instagram_business_account{id,username,followers_count,media_count}' }
         });
         if (igRes.data && igRes.data.instagram_business_account) {
           page.instagram_business_account = igRes.data.instagram_business_account.id;
           page.ig_username = igRes.data.instagram_business_account.username || null;
           page.ig_followers = igRes.data.instagram_business_account.followers_count || 0;
           page.ig_media_count = igRes.data.instagram_business_account.media_count || 0;
-          console.log(`[META CALLBACK] Page ${page.name} has IG: @${page.ig_username}`);
-        } else {
-          console.log(`[META CALLBACK] Page ${page.name} has no linked IG Business Account`);
         }
+        diag.steps.push({ step: `ig_check_${page.id}`, success: true, hasIg: !!page.instagram_business_account });
       } catch(e) {
-        console.warn(`[META CALLBACK] IG fetch for page ${page.id}:`, e.response?.data || e.message);
+        diag.steps.push({ step: `ig_check_${page.id}`, success: false, error: e.response?.data || e.message });
       }
     }
 
-    // 5. Determine selected page
+    // 7. Determine selected page
     let selectedPageId = null;
     if (pages.length > 0) {
       const pageWithIg = pages.find(p => p.instagram_business_account);
       selectedPageId = pageWithIg ? pageWithIg.id : pages[0].id;
     }
 
-    // 6. ALWAYS save the token — even if pages is empty.
-    //    A valid token with 0 pages is still useful (we can re-fetch pages later).
+    // 8. ALWAYS save the token + diagnostic data
     const metaData = {
       accessToken: longLivedToken,
       pages,
       selectedPageId,
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      lastCallbackDiag: diag
     };
 
     const { db } = require('../services/firebaseAdmin');
@@ -163,25 +234,35 @@ router.get('/callback', async (req, res) => {
     const baseUrl = process.env.FRONTEND_URL || `${protocol}://${host}`;
 
     if (pages.length === 0) {
-      // Token saved, but no pages found — redirect with partial success
-      console.warn('[META CALLBACK] Token saved but 0 pages. User may not have selected a page during OAuth.');
+      console.warn('[META CALLBACK] Token saved but 0 pages. Diag:', JSON.stringify(diag));
       return res.redirect(`${baseUrl}/index.html?platform=meta&status=error&message=${encodeURIComponent(
-        'Meta connected but no Facebook Pages were shared. Please click Connect again and make sure to CHECK your Facebook Page (e.g. Rumi) in the Meta popup when it asks which pages to share with the app.'
+        'Meta token saved but no Pages returned. Run Meta.debug() in console for diagnostics.'
       )}`);
     }
 
-    console.log(`[META CALLBACK] Success! ${pages.length} page(s) saved. Redirecting.`);
+    console.log(`[META CALLBACK] Success! ${pages.length} page(s) saved.`);
     res.redirect(`${baseUrl}/index.html?platform=meta&status=connected`);
 
-
   } catch (err) {
-    console.error('Error in Meta callback:', err.response?.data || err.message);
+    diag.steps.push({ step: 'fatal_error', error: err.response?.data || err.message, stack: err.stack?.split('\n').slice(0,3) });
+    console.error('[META CALLBACK] Fatal error. Diag:', JSON.stringify(diag));
+
+    // Try to save diagnostic even on fatal error
+    try {
+      const uidFromDiag = diag.uid;
+      if (uidFromDiag) {
+        const { db } = require('../services/firebaseAdmin');
+        if (db) await db.doc(`users/${uidFromDiag}/platforms/meta_diag`).set(diag);
+      }
+    } catch(e) { /* ignore save error */ }
+
     const host = req.headers['x-forwarded-host'] || req.headers.host;
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const baseUrl = process.env.FRONTEND_URL || `${protocol}://${host}`;
     res.redirect(`${baseUrl}/index.html?platform=meta&status=error&message=${encodeURIComponent(err.message || 'Callback failed')}`);
   }
 });
+
 
 
 /**
@@ -307,23 +388,37 @@ router.get('/debug', verifyAuth, async (req, res) => {
 
     const token = metaData.accessToken;
 
-    const [permRes, meRes, accRes] = await Promise.all([
-      axios.get(`https://graph.facebook.com/${fbApiVersion}/me/permissions`, { params: { access_token: token } }).catch(e => ({ data: e.response?.data || e.message })),
-      axios.get(`https://graph.facebook.com/${fbApiVersion}/me`, { params: { fields: 'id,name', access_token: token } }).catch(e => ({ data: e.response?.data || e.message })),
-      axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, { params: { fields: 'id,name,category,instagram_business_account{id,username}', access_token: token } }).catch(e => ({ data: e.response?.data || e.message }))
+    // Run all diagnostic calls in parallel
+    const [permRes, meRes, accRes, accSimpleRes, directPageRes] = await Promise.all([
+      axios.get(`https://graph.facebook.com/${fbApiVersion}/me/permissions`, { params: { access_token: token } })
+        .catch(e => ({ data: { error: e.response?.data || e.message } })),
+      axios.get(`https://graph.facebook.com/${fbApiVersion}/me`, { params: { fields: 'id,name', access_token: token } })
+        .catch(e => ({ data: { error: e.response?.data || e.message } })),
+      axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, { params: { fields: 'id,name,category,access_token', access_token: token } })
+        .catch(e => ({ data: { error: e.response?.data || e.message } })),
+      // Also try without fields
+      axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, { params: { access_token: token } })
+        .catch(e => ({ data: { error: e.response?.data || e.message } })),
+      // Try direct page fetch
+      axios.get(`https://graph.facebook.com/${fbApiVersion}/1216384444899314`, { params: { fields: 'id,name,category', access_token: token } })
+        .catch(e => ({ data: { error: e.response?.data || e.message } }))
     ]);
 
     res.json({
       success: true,
       permissions: permRes.data,
       user: meRes.data,
-      accounts: accRes.data,
-      storedPages: metaData.pages || []
+      accounts_with_fields: accRes.data,
+      accounts_without_fields: accSimpleRes.data,
+      direct_page_1216384444899314: directPageRes.data,
+      storedPages: metaData.pages || [],
+      lastCallbackDiag: metaData.lastCallbackDiag || null
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 
 /**
