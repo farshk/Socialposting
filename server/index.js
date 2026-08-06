@@ -30,6 +30,8 @@ app.use('/api/youtube', youtubeRoutes);
 app.use('/api/meta', metaRoutes);
 app.use('/api/facebook', metaRoutes);
 app.use('/api/instagram', metaRoutes);
+app.use('/api', metaRoutes);
+
 
 // Error Handling Middleware — exposes actual error for debugging
 app.use((err, req, res, next) => {

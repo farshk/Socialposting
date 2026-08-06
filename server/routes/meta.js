@@ -52,7 +52,7 @@ const fbApiVersion = 'v19.0';
  * GET /api/meta/auth
  * Generates Meta OAuth dialog URL
  */
-router.get('/auth', verifyAuth, (req, res) => {
+router.get(['/auth', '/meta/auth'], verifyAuth, (req, res) => {
   try {
     const stateObj = { uid: req.uid };
     const stateParam = Buffer.from(JSON.stringify(stateObj)).toString('base64');
@@ -80,7 +80,7 @@ router.get('/auth', verifyAuth, (req, res) => {
  * Exchanges code for tokens and fetches Pages/IG accounts.
  * Stores full diagnostic data from every API call for debugging.
  */
-router.get('/callback', async (req, res) => {
+router.get(['/callback', '/meta/callback'], async (req, res) => {
   const { code, state, error } = req.query;
   
   if (error) {
@@ -326,7 +326,7 @@ router.get('/callback', async (req, res) => {
 /**
  * GET /api/meta/status
  */
-router.get('/status', verifyAuth, async (req, res) => {
+router.get(['/status', '/meta/status'], verifyAuth, async (req, res) => {
   try {
     const { db } = require('../services/firebaseAdmin');
     let metaData = null;
@@ -445,7 +445,7 @@ router.get('/status', verifyAuth, async (req, res) => {
  * GET /api/meta/debug
  * Diagnostic endpoint to inspect raw Meta permissions and Graph API responses
  */
-router.get('/debug', verifyAuth, async (req, res) => {
+router.get(['/debug', '/meta/debug'], verifyAuth, async (req, res) => {
   try {
     const { db } = require('../services/firebaseAdmin');
     let metaData = null;
@@ -498,7 +498,7 @@ router.get('/debug', verifyAuth, async (req, res) => {
 /**
  * POST /api/meta/select-page
  */
-router.post('/select-page', verifyAuth, async (req, res) => {
+router.post(['/select-page', '/meta/select-page'], verifyAuth, async (req, res) => {
   const { pageId } = req.body;
   try {
     const { db } = require('../services/firebaseAdmin');
@@ -521,7 +521,7 @@ router.post('/select-page', verifyAuth, async (req, res) => {
 /**
  * GET /api/facebook/metrics
  */
-router.get('/facebook/metrics', verifyAuth, async (req, res) => {
+router.get(['/facebook/metrics', '/metrics'], verifyAuth, async (req, res) => {
   try {
     const { db } = require('../services/firebaseAdmin');
     
@@ -570,7 +570,7 @@ router.get('/facebook/metrics', verifyAuth, async (req, res) => {
 /**
  * GET /api/instagram/metrics
  */
-router.get('/instagram/metrics', verifyAuth, async (req, res) => {
+router.get(['/instagram/metrics', '/metrics'], verifyAuth, async (req, res) => {
   try {
     const { db } = require('../services/firebaseAdmin');
     
@@ -622,7 +622,7 @@ router.get('/instagram/metrics', verifyAuth, async (req, res) => {
 /**
  * GET /api/facebook/posts
  */
-router.get('/facebook/posts', verifyAuth, async (req, res) => {
+router.get(['/facebook/posts', '/posts'], verifyAuth, async (req, res) => {
   try {
     const { db } = require('../services/firebaseAdmin');
     let metaData = null;
@@ -659,7 +659,7 @@ router.get('/facebook/posts', verifyAuth, async (req, res) => {
 /**
  * GET /api/instagram/posts
  */
-router.get('/instagram/posts', verifyAuth, async (req, res) => {
+router.get(['/instagram/posts', '/posts'], verifyAuth, async (req, res) => {
   try {
     const { db } = require('../services/firebaseAdmin');
     let metaData = null;
@@ -696,7 +696,7 @@ router.get('/instagram/posts', verifyAuth, async (req, res) => {
 /**
  * POST /api/facebook/publish
  */
-router.post('/facebook/publish', verifyAuth, async (req, res) => {
+router.post(['/facebook/publish', '/publish'], verifyAuth, async (req, res) => {
   const { videoUrl, title, description } = req.body;
   if (!videoUrl) return res.status(400).json({ success: false, error: 'videoUrl is required' });
 
@@ -745,7 +745,7 @@ router.post('/facebook/publish', verifyAuth, async (req, res) => {
  * POST /api/instagram/publish
  * 3-Step Instagram Reel Publishing Pipeline with Guardrails (BA Recommendation)
  */
-router.post('/instagram/publish', verifyAuth, async (req, res) => {
+router.post(['/instagram/publish', '/publish'], verifyAuth, async (req, res) => {
   const { videoUrl, caption } = req.body;
   if (!videoUrl) return res.status(400).json({ success: false, error: 'videoUrl is required' });
 
@@ -843,7 +843,7 @@ router.post('/instagram/publish', verifyAuth, async (req, res) => {
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
-router.post('/upload-temp-video', verifyAuth, upload.single('video'), async (req, res) => {
+router.post(['/upload-temp-video', '/meta/upload-temp-video'], verifyAuth, upload.single('video'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'No video file provided' });
@@ -876,7 +876,7 @@ router.post('/upload-temp-video', verifyAuth, upload.single('video'), async (req
 /**
  * DELETE /api/meta/disconnect
  */
-router.delete('/disconnect', verifyAuth, async (req, res) => {
+router.delete(['/disconnect', '/meta/disconnect'], verifyAuth, async (req, res) => {
   try {
     const { db } = require('../services/firebaseAdmin');
     if (db) {
