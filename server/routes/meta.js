@@ -837,10 +837,12 @@ router.post(['/instagram/publish', '/publish'], verifyAuth, async (req, res) => 
 });
 
 /**
- * In-memory video store for fail-safe video serving when Firebase Storage is not configured
+ * In-memory stores for fail-safe chunked video uploading and serving
  */
 const tempVideoStore = new Map();
+const uploadSessions = new Map();
 
+// Serve video buffer to Meta Graph API or browser
 router.get(['/temp-video/:id', '/meta/temp-video/:id'], (req, res) => {
   const videoId = req.params.id.replace('.mp4', '');
   const item = tempVideoStore.get(videoId);
@@ -854,59 +856,101 @@ router.get(['/temp-video/:id', '/meta/temp-video/:id'], (req, res) => {
 });
 
 /**
- * POST /api/meta/upload-temp-video
- * Temporary video upload proxy endpoint for Firebase Storage / public URL bridge
+ * POST /api/meta/initiate-upload
+ * Step 1 of chunked video upload for Vercel 4.5MB payload limit compatibility
  */
-const multer = require('multer');
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
+router.post(['/initiate-upload', '/meta/initiate-upload'], verifyAuth, (req, res) => {
+  const { filename, mimeType, totalSize, totalChunks } = req.body;
+  if (!totalChunks || totalChunks < 1) {
+    return res.status(400).json({ success: false, error: 'totalChunks is required' });
+  }
 
-router.post(['/upload-temp-video', '/meta/upload-temp-video'], verifyAuth, upload.single('video'), async (req, res) => {
+  const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  uploadSessions.set(uploadId, {
+    uploadId,
+    uid: req.uid,
+    filename: filename || 'video.mp4',
+    mimeType: mimeType || 'video/mp4',
+    totalSize,
+    totalChunks,
+    chunks: new Array(totalChunks),
+    createdAt: Date.now()
+  });
+
+  console.log(`[CHUNKED UPLOAD] Initiated upload session ${uploadId} (${totalChunks} chunks)`);
+  res.json({ success: true, uploadId });
+});
+
+/**
+ * POST /api/meta/upload-chunk
+ * Step 2 of chunked video upload (receives ~2.7MB base64 JSON payload per 2MB binary chunk)
+ */
+router.post(['/upload-chunk', '/meta/upload-chunk'], verifyAuth, async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, error: 'No video file provided' });
+    const { uploadId, chunkIndex, chunkBase64 } = req.body;
+    const session = uploadSessions.get(uploadId);
+
+    if (!session) {
+      return res.status(404).json({ success: false, error: 'Upload session expired or not found' });
     }
 
-    const host = req.headers['x-forwarded-host'] || req.headers.host;
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const baseUrl = process.env.FRONTEND_URL || `${protocol}://${host}`;
+    const chunkBuffer = Buffer.from(chunkBase64, 'base64');
+    session.chunks[chunkIndex] = chunkBuffer;
 
-    // Strategy 1: Firebase Storage (if bucket is configured in Firebase Admin)
-    try {
-      const { storage } = require('../services/firebaseAdmin');
-      if (storage) {
-        const filename = `temp_uploads/${req.uid}/${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
-        const fileRef = storage.file(filename);
-        await fileRef.save(req.file.buffer, {
-          contentType: req.file.mimetype || 'video/mp4',
-          metadata: { firebaseStorageDownloadTokens: req.uid }
-        });
-        const [signedUrl] = await fileRef.getSignedUrl({
-          action: 'read',
-          expires: Date.now() + 24 * 60 * 60 * 1000
-        });
-        console.log('[META UPLOAD] Saved to Firebase Storage:', signedUrl);
-        return res.json({ success: true, publicUrl: signedUrl });
+    const receivedCount = session.chunks.filter(Boolean).length;
+    console.log(`[CHUNKED UPLOAD] Session ${uploadId}: received chunk ${chunkIndex + 1}/${session.totalChunks}`);
+
+    // If all chunks received, assemble the final video file!
+    if (receivedCount === session.totalChunks && session.chunks.every(Boolean)) {
+      console.log(`[CHUNKED UPLOAD] All ${session.totalChunks} chunks received for ${uploadId}. Assembling video...`);
+      const finalBuffer = Buffer.concat(session.chunks);
+      const host = req.headers['x-forwarded-host'] || req.headers.host;
+      const protocol = req.headers['x-forwarded-proto'] || 'https';
+      const baseUrl = process.env.FRONTEND_URL || `${protocol}://${host}`;
+
+      // Strategy 1: Firebase Storage (if bucket is configured in Firebase Admin)
+      try {
+        const { storage } = require('../services/firebaseAdmin');
+        if (storage) {
+          const filename = `temp_uploads/${req.uid}/${Date.now()}_${session.filename.replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
+          const fileRef = storage.file(filename);
+          await fileRef.save(finalBuffer, {
+            contentType: session.mimeType || 'video/mp4',
+            metadata: { firebaseStorageDownloadTokens: req.uid }
+          });
+          const [signedUrl] = await fileRef.getSignedUrl({
+            action: 'read',
+            expires: Date.now() + 24 * 60 * 60 * 1000
+          });
+          uploadSessions.delete(uploadId);
+          console.log('[CHUNKED UPLOAD] Saved final video to Firebase Storage:', signedUrl);
+          return res.json({ success: true, isComplete: true, publicUrl: signedUrl });
+        }
+      } catch (storageErr) {
+        console.warn('[CHUNKED UPLOAD] Firebase Storage failed/unconfigured, using Memory Store:', storageErr.message);
       }
-    } catch (storageErr) {
-      console.warn('[META UPLOAD] Firebase Admin Storage unconfigured or failed, using memory store:', storageErr.message);
+
+      // Strategy 2: Memory Store (fallback)
+      const videoId = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      tempVideoStore.set(videoId, {
+        buffer: finalBuffer,
+        mimetype: session.mimeType || 'video/mp4',
+        expiresAt: Date.now() + 24 * 60 * 60 * 1000
+      });
+
+      uploadSessions.delete(uploadId);
+      const publicUrl = `${baseUrl}/api/meta/temp-video/${videoId}.mp4`;
+      console.log('[CHUNKED UPLOAD] Saved final video to Memory Store:', publicUrl);
+      return res.json({ success: true, isComplete: true, publicUrl });
     }
 
-    // Strategy 2: In-Memory Buffer Endpoint (works 100% of the time, zero config)
-    const videoId = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    tempVideoStore.set(videoId, {
-      buffer: req.file.buffer,
-      mimetype: req.file.mimetype || 'video/mp4',
-      expiresAt: Date.now() + 24 * 60 * 60 * 1000
-    });
-
-    const publicUrl = `${baseUrl}/api/meta/temp-video/${videoId}.mp4`;
-    console.log('[META UPLOAD] Saved to Memory Store:', publicUrl);
-    return res.json({ success: true, publicUrl });
+    res.json({ success: true, isComplete: false, receivedChunks: receivedCount });
   } catch (err) {
-    console.error('[META UPLOAD] Error uploading temp video:', err.message);
+    console.error('[CHUNKED UPLOAD] Error processing chunk:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 
 

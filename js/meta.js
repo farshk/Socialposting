@@ -141,43 +141,78 @@ const Meta = (function() {
   async function uploadVideoFile(file, progressCb) {
     if (!file) throw new Error('No video file selected');
 
-    // Use Backend Upload Proxy directly — fail-safe, handles memory buffer serving & Firebase Storage
     const token = await getFirebaseIdToken();
-    const formData = new FormData();
-    formData.append('video', file);
+    const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB binary chunks -> ~2.7MB base64 JSON (well under Vercel 4.5MB limit)
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
-    const xhr = new XMLHttpRequest();
-    return await new Promise((resolve, reject) => {
-      xhr.open('POST', `${BACKEND_URL}/api/meta/upload-temp-video`);
-      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    // Step 1: Initiate upload session
+    const initRes = await fetch(`${BACKEND_URL}/api/meta/initiate-upload`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: file.name,
+        mimeType: file.type || 'video/mp4',
+        totalSize: file.size,
+        totalChunks
+      })
+    }).then(r => r.json());
 
-      if (xhr.upload && progressCb) {
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            const pct = Math.round((e.loaded / e.total) * 100);
-            progressCb(pct);
-          }
-        };
+    if (!initRes.success || !initRes.uploadId) {
+      throw new Error(initRes.error || 'Failed to initiate video upload session');
+    }
+
+    const uploadId = initRes.uploadId;
+    let publicUrl = null;
+
+    // Helper to convert blob chunk to base64
+    const fileToBase64 = (blob) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result;
+        const base64 = result.substring(result.indexOf(',') + 1);
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    // Step 2: Send chunks sequentially
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(file.size, start + CHUNK_SIZE);
+      const chunkBlob = file.slice(start, end);
+      const chunkBase64 = await fileToBase64(chunkBlob);
+
+      const chunkRes = await fetch(`${BACKEND_URL}/api/meta/upload-chunk`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uploadId,
+          chunkIndex: i,
+          chunkBase64
+        })
+      }).then(r => r.json());
+
+      if (!chunkRes.success) {
+        throw new Error(chunkRes.error || `Failed to upload video chunk ${i + 1}/${totalChunks}`);
       }
 
-      xhr.onload = () => {
-        try {
-          const res = JSON.parse(xhr.responseText);
-          if (res.success && res.publicUrl) {
-            console.log('[META MEDIA BRIDGE] Uploaded via Backend Proxy:', res.publicUrl);
-            resolve(res.publicUrl);
-          } else {
-            reject(new Error(res.error || 'Backend upload failed'));
-          }
-        } catch (e) {
-          reject(new Error('Invalid upload response from backend'));
-        }
-      };
+      const pct = Math.round(((i + 1) / totalChunks) * 100);
+      if (progressCb) progressCb(pct);
 
-      xhr.onerror = () => reject(new Error('Network error during video upload'));
-      xhr.send(formData);
-    });
+      if (chunkRes.isComplete && chunkRes.publicUrl) {
+        publicUrl = chunkRes.publicUrl;
+      }
+    }
+
+    if (!publicUrl) {
+      throw new Error('Video upload completed but no public URL was returned');
+    }
+
+    console.log('[META MEDIA BRIDGE] Chunked Video Upload Complete:', publicUrl);
+    return publicUrl;
   }
+
 
 
   async function publishFacebook(videoUrl, title, description) {
