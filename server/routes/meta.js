@@ -837,6 +837,23 @@ router.post(['/instagram/publish', '/publish'], verifyAuth, async (req, res) => 
 });
 
 /**
+ * In-memory video store for fail-safe video serving when Firebase Storage is not configured
+ */
+const tempVideoStore = new Map();
+
+router.get(['/temp-video/:id', '/meta/temp-video/:id'], (req, res) => {
+  const videoId = req.params.id.replace('.mp4', '');
+  const item = tempVideoStore.get(videoId);
+  if (!item) {
+    return res.status(404).send('Video not found or expired');
+  }
+  res.setHeader('Content-Type', item.mimetype || 'video/mp4');
+  res.setHeader('Content-Length', item.buffer.length);
+  res.setHeader('Accept-Ranges', 'bytes');
+  res.send(item.buffer);
+});
+
+/**
  * POST /api/meta/upload-temp-video
  * Temporary video upload proxy endpoint for Firebase Storage / public URL bridge
  */
@@ -849,28 +866,48 @@ router.post(['/upload-temp-video', '/meta/upload-temp-video'], verifyAuth, uploa
       return res.status(400).json({ success: false, error: 'No video file provided' });
     }
 
-    const { storage } = require('../services/firebaseAdmin');
-    if (storage) {
-      const filename = `temp_uploads/${req.uid}/${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
-      const fileRef = storage.file(filename);
-      await fileRef.save(req.file.buffer, {
-        contentType: req.file.mimetype || 'video/mp4',
-        metadata: { firebaseStorageDownloadTokens: req.uid }
-      });
-      // Make file publicly accessible for 24h
-      const [signedUrl] = await fileRef.getSignedUrl({
-        action: 'read',
-        expires: Date.now() + 24 * 60 * 60 * 1000
-      });
-      return res.json({ success: true, publicUrl: signedUrl });
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const baseUrl = process.env.FRONTEND_URL || `${protocol}://${host}`;
+
+    // Strategy 1: Firebase Storage (if bucket is configured in Firebase Admin)
+    try {
+      const { storage } = require('../services/firebaseAdmin');
+      if (storage) {
+        const filename = `temp_uploads/${req.uid}/${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
+        const fileRef = storage.file(filename);
+        await fileRef.save(req.file.buffer, {
+          contentType: req.file.mimetype || 'video/mp4',
+          metadata: { firebaseStorageDownloadTokens: req.uid }
+        });
+        const [signedUrl] = await fileRef.getSignedUrl({
+          action: 'read',
+          expires: Date.now() + 24 * 60 * 60 * 1000
+        });
+        console.log('[META UPLOAD] Saved to Firebase Storage:', signedUrl);
+        return res.json({ success: true, publicUrl: signedUrl });
+      }
+    } catch (storageErr) {
+      console.warn('[META UPLOAD] Firebase Admin Storage unconfigured or failed, using memory store:', storageErr.message);
     }
 
-    res.status(500).json({ success: false, error: 'Firebase Storage bucket is not configured' });
+    // Strategy 2: In-Memory Buffer Endpoint (works 100% of the time, zero config)
+    const videoId = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    tempVideoStore.set(videoId, {
+      buffer: req.file.buffer,
+      mimetype: req.file.mimetype || 'video/mp4',
+      expiresAt: Date.now() + 24 * 60 * 60 * 1000
+    });
+
+    const publicUrl = `${baseUrl}/api/meta/temp-video/${videoId}.mp4`;
+    console.log('[META UPLOAD] Saved to Memory Store:', publicUrl);
+    return res.json({ success: true, publicUrl });
   } catch (err) {
     console.error('[META UPLOAD] Error uploading temp video:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 
 /**

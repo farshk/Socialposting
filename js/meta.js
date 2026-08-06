@@ -141,33 +141,7 @@ const Meta = (function() {
   async function uploadVideoFile(file, progressCb) {
     if (!file) throw new Error('No video file selected');
 
-    // Strategy 1: Client-side Firebase Storage upload (if bucket is configured)
-    if (typeof firebase !== 'undefined' && firebase.storage && firebase.auth().currentUser) {
-      try {
-        const uid = firebase.auth().currentUser.uid;
-        const storageRef = firebase.storage().ref(`temp_uploads/${uid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9_.-]/g, '_')}`);
-        const uploadTask = storageRef.put(file);
-
-        await new Promise((resolve, reject) => {
-          uploadTask.on('state_changed', 
-            (snapshot) => {
-              const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-              if (progressCb) progressCb(pct);
-            },
-            (error) => reject(error),
-            () => resolve()
-          );
-        });
-
-        const downloadUrl = await uploadTask.snapshot.ref.getDownloadURL();
-        console.log('[META MEDIA BRIDGE] Uploaded via Firebase Storage SDK:', downloadUrl);
-        return downloadUrl;
-      } catch (err) {
-        console.warn('[META MEDIA BRIDGE] Frontend Firebase Storage upload failed/unconfigured, using backend proxy:', err.message);
-      }
-    }
-
-    // Strategy 2: Backend Upload Proxy
+    // Use Backend Upload Proxy directly — fail-safe, handles memory buffer serving & Firebase Storage
     const token = await getFirebaseIdToken();
     const formData = new FormData();
     formData.append('video', file);
@@ -196,7 +170,7 @@ const Meta = (function() {
             reject(new Error(res.error || 'Backend upload failed'));
           }
         } catch (e) {
-          reject(new Error('Invalid upload response'));
+          reject(new Error('Invalid upload response from backend'));
         }
       };
 
@@ -204,6 +178,7 @@ const Meta = (function() {
       xhr.send(formData);
     });
   }
+
 
   async function publishFacebook(videoUrl, title, description) {
     const token = await getFirebaseIdToken();
