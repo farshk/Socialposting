@@ -104,81 +104,99 @@ router.get('/callback', async (req, res) => {
       diag.steps.push({ step: 'permissions', success: false, error: e.response?.data || e.message });
     }
 
-    // 5. Fetch Pages — try BOTH tokens, record raw responses
+    // 5. Fetch Pages — multiple strategies since /me/accounts can return empty in Dev mode
     let pagesData = [];
-    const tokensToTry = [
-      { token: longLivedToken, label: 'longLivedToken' },
-      { token: shortLivedToken, label: 'shortLivedToken' }
-    ];
 
-    for (const { token, label } of tokensToTry) {
+    // Strategy A: Standard /me/accounts
+    try {
+      const accountsRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, {
+        params: { access_token: longLivedToken, fields: 'id,name,access_token,category' }
+      });
+      pagesData = accountsRes.data.data || [];
+      diag.steps.push({ step: 'me_accounts', success: true, count: pagesData.length });
+    } catch (e) {
+      diag.steps.push({ step: 'me_accounts', success: false, error: e.response?.data || e.message });
+    }
+
+    // Strategy B: /me?fields=accounts{...} (embeds accounts as user edge — different API path)
+    if (pagesData.length === 0 && meData) {
       try {
-        const accountsRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, {
-          params: { access_token: token, fields: 'id,name,access_token,category' }
+        const edgeRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me`, {
+          params: { access_token: longLivedToken, fields: 'accounts{id,name,access_token,category}' }
         });
-        const rawResponse = accountsRes.data;
-        diag.steps.push({
-          step: `me_accounts_${label}`,
-          success: true,
-          rawDataKeys: Object.keys(rawResponse),
-          dataLength: (rawResponse.data || []).length,
-          pages: (rawResponse.data || []).map(p => ({ id: p.id, name: p.name, category: p.category })),
-          paging: rawResponse.paging || null
+        pagesData = edgeRes.data?.accounts?.data || [];
+        diag.steps.push({ step: 'me_accounts_edge', success: true, count: pagesData.length });
+      } catch (e) {
+        diag.steps.push({ step: 'me_accounts_edge', success: false, error: e.response?.data || e.message });
+      }
+    }
+
+    // Strategy C: /{user_id}/accounts (explicit user ID instead of 'me')
+    if (pagesData.length === 0 && meData && meData.id) {
+      try {
+        const uidRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/${meData.id}/accounts`, {
+          params: { access_token: longLivedToken, fields: 'id,name,access_token,category' }
         });
-        if (pagesData.length === 0) {
-          pagesData = rawResponse.data || [];
+        pagesData = uidRes.data.data || [];
+        diag.steps.push({ step: 'user_id_accounts', success: true, count: pagesData.length });
+      } catch (e) {
+        diag.steps.push({ step: 'user_id_accounts', success: false, error: e.response?.data || e.message });
+      }
+    }
+
+    // Strategy D: Direct page fetch by known IDs (works when /me/accounts is empty in Dev mode)
+    if (pagesData.length === 0) {
+      // Collect known page IDs from: (a) previously stored data, (b) hardcoded known pages
+      let knownPageIds = [];
+
+      // Check Firestore for previously stored page IDs
+      try {
+        const { db: dbCheck } = require('../services/firebaseAdmin');
+        if (dbCheck) {
+          const existingDoc = await dbCheck.doc(`users/${uid}/platforms/meta`).get();
+          if (existingDoc.exists) {
+            const existingData = existingDoc.data();
+            if (existingData.pages && existingData.pages.length > 0) {
+              knownPageIds = existingData.pages.map(p => p.id);
+            }
+            if (existingData.knownPageIds) {
+              knownPageIds = [...new Set([...knownPageIds, ...existingData.knownPageIds])];
+            }
+          }
         }
-      } catch (e) {
-        diag.steps.push({
-          step: `me_accounts_${label}`,
-          success: false,
-          httpStatus: e.response?.status,
-          error: e.response?.data || e.message
-        });
-      }
-    }
+      } catch(e) { /* ignore */ }
 
-    // 5b. Also try without specifying fields (in case fields param is causing issues)
-    if (pagesData.length === 0) {
-      try {
-        const simpleRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, {
-          params: { access_token: longLivedToken }
-        });
-        diag.steps.push({
-          step: 'me_accounts_no_fields',
-          success: true,
-          dataLength: (simpleRes.data.data || []).length,
-          rawData: simpleRes.data
-        });
-        pagesData = simpleRes.data.data || [];
-      } catch (e) {
-        diag.steps.push({
-          step: 'me_accounts_no_fields',
-          success: false,
-          error: e.response?.data || e.message
-        });
+      // Also try to discover pages via /me?fields=likes (pages the user manages appear here sometimes)
+      // But more reliably: try fetching each known page directly with access_token field
+      for (const pageId of knownPageIds) {
+        try {
+          const directRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/${pageId}`, {
+            params: { access_token: longLivedToken, fields: 'id,name,access_token,category' }
+          });
+          if (directRes.data && directRes.data.id && directRes.data.access_token) {
+            pagesData.push(directRes.data);
+            diag.steps.push({ step: `direct_page_${pageId}`, success: true, name: directRes.data.name, hasAccessToken: true });
+          }
+        } catch (e) {
+          diag.steps.push({ step: `direct_page_${pageId}`, success: false, error: e.response?.data || e.message });
+        }
       }
-    }
 
-    // 5c. Try directly fetching the known page ID as last resort
-    if (pagesData.length === 0) {
-      try {
-        const directRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/1216384444899314`, {
-          params: { access_token: longLivedToken, fields: 'id,name,category' }
-        });
-        diag.steps.push({
-          step: 'direct_page_fetch_1216384444899314',
-          success: true,
-          data: directRes.data
-        });
-      } catch (e) {
-        diag.steps.push({
-          step: 'direct_page_fetch_1216384444899314',
-          success: false,
-          httpStatus: e.response?.status,
-          error: e.response?.data || e.message
-        });
+      // If we still have nothing and no known IDs, try to discover pages via search
+      if (pagesData.length === 0 && knownPageIds.length === 0) {
+        // Last resort: try fetching all pages the user admins via /{user_id}/accounts with short-lived token
+        try {
+          const lastRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, {
+            params: { access_token: shortLivedToken, fields: 'id,name,access_token,category' }
+          });
+          pagesData = lastRes.data.data || [];
+          diag.steps.push({ step: 'me_accounts_shortToken', success: true, count: pagesData.length });
+        } catch(e) {
+          diag.steps.push({ step: 'me_accounts_shortToken', success: false, error: e.response?.data || e.message });
+        }
       }
+
+      diag.steps.push({ step: 'strategy_d_summary', knownPageIds, pagesFound: pagesData.length });
     }
 
     let pages = pagesData.map(p => ({
@@ -192,7 +210,7 @@ router.get('/callback', async (req, res) => {
     for (let page of pages) {
       try {
         const igRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/${page.id}`, {
-          params: { access_token: page.access_token, fields: 'instagram_business_account{id,username,followers_count,media_count}' }
+          params: { access_token: page.access_token || longLivedToken, fields: 'instagram_business_account{id,username,followers_count,media_count}' }
         });
         if (igRes.data && igRes.data.instagram_business_account) {
           page.instagram_business_account = igRes.data.instagram_business_account.id;
@@ -206,6 +224,7 @@ router.get('/callback', async (req, res) => {
       }
     }
 
+
     // 7. Determine selected page
     let selectedPageId = null;
     if (pages.length > 0) {
@@ -213,12 +232,15 @@ router.get('/callback', async (req, res) => {
       selectedPageId = pageWithIg ? pageWithIg.id : pages[0].id;
     }
 
-    // 8. ALWAYS save the token + diagnostic data
+    // 8. ALWAYS save the token + diagnostic data + known page IDs for future direct fetch
+    const knownPageIds = pages.length > 0 ? pages.map(p => p.id) : [];
     const metaData = {
       accessToken: longLivedToken,
       pages,
+      knownPageIds,
       selectedPageId,
       updatedAt: Date.now(),
+
       lastCallbackDiag: diag
     };
 
@@ -287,53 +309,69 @@ router.get('/status', verifyAuth, async (req, res) => {
 
     // AUTO-HEAL: If token exists but pages are empty, try live-fetching from Graph API
     if (pages.length === 0 && metaData.accessToken) {
-      console.log('[META STATUS] Stored pages empty — attempting live fetch from Graph API...');
+      console.log('[META STATUS] Stored pages empty — attempting live fetch...');
+      
+      // Try /me/accounts first
       try {
         const accountsRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/me/accounts`, {
           params: { access_token: metaData.accessToken, fields: 'id,name,access_token,category' }
         });
         const livePages = accountsRes.data.data || [];
-        console.log(`[META STATUS] Live fetch returned ${livePages.length} page(s)`);
-
         if (livePages.length > 0) {
-          pages = livePages.map(p => ({
-            id: p.id,
-            name: p.name,
-            access_token: p.access_token,
-            category: p.category
-          }));
-
-          // Also fetch IG for each page
-          for (let page of pages) {
-            try {
-              const igRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/${page.id}`, {
-                params: { access_token: page.access_token, fields: 'instagram_business_account{id,username,followers_count,media_count}' }
-              });
-              if (igRes.data && igRes.data.instagram_business_account) {
-                page.instagram_business_account = igRes.data.instagram_business_account.id;
-                page.ig_username = igRes.data.instagram_business_account.username || null;
-                page.ig_followers = igRes.data.instagram_business_account.followers_count || 0;
-                page.ig_media_count = igRes.data.instagram_business_account.media_count || 0;
-              }
-            } catch(e) { /* ignore per-page IG errors */ }
-          }
-
-          const pageWithIgLive = pages.find(p => p.instagram_business_account);
-          selectedPageId = pageWithIgLive ? pageWithIgLive.id : pages[0].id;
-
-          // Persist the healed data back to Firestore
-          const healedData = { ...metaData, pages, selectedPageId, updatedAt: Date.now() };
-          if (db) {
-            await db.doc(`users/${req.uid}/platforms/meta`).set(healedData);
-          } else {
-            await saveTokens(req.uid, 'meta', healedData);
-          }
-          console.log('[META STATUS] Auto-healed: pages saved to Firestore.');
+          pages = livePages.map(p => ({ id: p.id, name: p.name, access_token: p.access_token, category: p.category }));
         }
       } catch (e) {
-        console.warn('[META STATUS] Live fetch failed:', e.response?.data || e.message);
+        console.warn('[META STATUS] /me/accounts failed:', e.response?.data || e.message);
+      }
+
+      // If still empty, try direct page fetch by known IDs
+      if (pages.length === 0 && metaData.knownPageIds && metaData.knownPageIds.length > 0) {
+        console.log('[META STATUS] Trying direct page fetch for known IDs:', metaData.knownPageIds);
+        for (const pageId of metaData.knownPageIds) {
+          try {
+            const directRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/${pageId}`, {
+              params: { access_token: metaData.accessToken, fields: 'id,name,access_token,category' }
+            });
+            if (directRes.data && directRes.data.id && directRes.data.access_token) {
+              pages.push(directRes.data);
+              console.log(`[META STATUS] Direct fetch page ${pageId}: ${directRes.data.name} ✅`);
+            }
+          } catch(e) {
+            console.warn(`[META STATUS] Direct fetch page ${pageId} failed:`, e.response?.data || e.message);
+          }
+        }
+      }
+
+      // Fetch IG for recovered pages
+      if (pages.length > 0) {
+        for (let page of pages) {
+          try {
+            const igRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/${page.id}`, {
+              params: { access_token: page.access_token || metaData.accessToken, fields: 'instagram_business_account{id,username,followers_count,media_count}' }
+            });
+            if (igRes.data && igRes.data.instagram_business_account) {
+              page.instagram_business_account = igRes.data.instagram_business_account.id;
+              page.ig_username = igRes.data.instagram_business_account.username || null;
+              page.ig_followers = igRes.data.instagram_business_account.followers_count || 0;
+              page.ig_media_count = igRes.data.instagram_business_account.media_count || 0;
+            }
+          } catch(e) { /* ignore per-page IG errors */ }
+        }
+
+        const pageWithIgLive = pages.find(p => p.instagram_business_account);
+        selectedPageId = pageWithIgLive ? pageWithIgLive.id : pages[0].id;
+
+        // Persist the healed data back to Firestore
+        const healedData = { ...metaData, pages, knownPageIds: pages.map(p => p.id), selectedPageId, updatedAt: Date.now() };
+        if (db) {
+          await db.doc(`users/${req.uid}/platforms/meta`).set(healedData);
+        } else {
+          await saveTokens(req.uid, 'meta', healedData);
+        }
+        console.log('[META STATUS] Auto-healed: pages saved to Firestore.');
       }
     }
+
 
     const pageWithIg = pages.find(p => p.instagram_business_account);
     const selectedPage = pages.find(p => p.id === selectedPageId) || pageWithIg || pages[0];
