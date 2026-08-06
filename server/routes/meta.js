@@ -13,6 +13,42 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 const fbApiVersion = 'v19.0';
 
 /**
+ * ============================================================================
+ * DEV_MODE_WORKAROUND — Remove when Meta App moves to Live mode
+ * ============================================================================
+ *
+ * PROBLEM:
+ *   When the Meta App is in Development mode, the standard Graph API endpoint
+ *   `GET /me/accounts` returns `{"data": []}` (empty) even though:
+ *     - All permissions (pages_show_list, pages_manage_posts, etc.) are granted
+ *     - The user IS an admin of the Facebook Page
+ *     - Direct page fetch `GET /{page_id}` works perfectly
+ *
+ * WORKAROUND:
+ *   The callback and /status routes use a 4-strategy fallback to discover pages:
+ *     A. `GET /me/accounts` (standard — works in Live mode)
+ *     B. `GET /me?fields=accounts{...}` (edge embedding — alternative API path)
+ *     C. `GET /{user_id}/accounts` (explicit user ID)
+ *     D. `GET /{page_id}?fields=id,name,access_token,category` (direct fetch
+ *         by known page IDs stored in Firestore under `knownPageIds`)
+ *
+ *   Strategy D is the one that actually works in Dev mode.
+ *   The `knownPageIds` field in Firestore must be seeded for new users.
+ *
+ * WHEN TO REVERT:
+ *   Once the Meta App is approved and switched to Live mode:
+ *   1. Strategy A (`/me/accounts`) will work normally
+ *   2. Strategies B, C, D can be removed from both the callback and /status
+ *   3. The `knownPageIds` field in Firestore is no longer needed
+ *   4. The `auth_type=rerequest` param in /auth can be removed (optional)
+ *   5. The `lastCallbackDiag` diagnostic data saving can be removed
+ *
+ * Search for "DEV_MODE_WORKAROUND" to find all affected code sections.
+ * ============================================================================
+ */
+
+
+/**
  * GET /api/meta/auth
  * Generates Meta OAuth dialog URL
  */
@@ -707,7 +743,7 @@ router.post('/facebook/publish', verifyAuth, async (req, res) => {
 
 /**
  * POST /api/instagram/publish
- * 3-Step Instagram Reel Publishing Pipeline
+ * 3-Step Instagram Reel Publishing Pipeline with Guardrails (BA Recommendation)
  */
 router.post('/instagram/publish', verifyAuth, async (req, res) => {
   const { videoUrl, caption } = req.body;
@@ -731,6 +767,7 @@ router.post('/instagram/publish', verifyAuth, async (req, res) => {
     const pageToken = selectedPage.access_token;
 
     // Step 1: Create Media Container
+    console.log(`[IG PUBLISH] Creating Reels container for IG User ${igUserId}...`);
     const containerRes = await axios.post(`https://graph.facebook.com/${fbApiVersion}/${igUserId}/media`, null, {
       params: {
         media_type: 'REELS',
@@ -741,35 +778,43 @@ router.post('/instagram/publish', verifyAuth, async (req, res) => {
     });
 
     const containerId = containerRes.data.id;
+    console.log(`[IG PUBLISH] Container created ID: ${containerId}. Starting status polling...`);
 
-    // Step 2: Poll Container Status (max 10 attempts)
+    // Step 2: Poll Container Status (BA Recommendation: Max 30 attempts, 3s delay = 90s max timeout cap)
     let isFinished = false;
-    for (let i = 0; i < 10; i++) {
+    let lastStatusCode = 'UNKNOWN';
+    const MAX_POLL_ATTEMPTS = 30;
+
+    for (let attempt = 1; attempt <= MAX_POLL_ATTEMPTS; attempt++) {
       await new Promise(resolve => setTimeout(resolve, 3000));
       const statusRes = await axios.get(`https://graph.facebook.com/${fbApiVersion}/${containerId}`, {
-        params: { fields: 'status_code', access_token: pageToken }
+        params: { fields: 'status_code,status', access_token: pageToken }
       });
-      const statusCode = statusRes.data.status_code;
-      if (statusCode === 'FINISHED') {
+      lastStatusCode = statusRes.data.status_code || 'UNKNOWN';
+      console.log(`[IG PUBLISH] Poll attempt ${attempt}/${MAX_POLL_ATTEMPTS}: ${lastStatusCode}`);
+
+      if (lastStatusCode === 'FINISHED') {
         isFinished = true;
         break;
       }
-      if (statusCode === 'ERROR' || statusCode === 'EXPIRED') {
-        throw new Error(`IG Container status: ${statusCode}`);
+      if (lastStatusCode === 'ERROR' || lastStatusCode === 'EXPIRED') {
+        const errorDetails = statusRes.data.status || 'Meta processing error';
+        throw new Error(`IG Container processing failed with status: ${lastStatusCode} (${errorDetails})`);
       }
     }
 
     if (!isFinished) {
-      throw new Error('IG Container did not finish processing in time');
+      throw new Error(`IG Container processing timed out after ${MAX_POLL_ATTEMPTS * 3}s (Last status: ${lastStatusCode})`);
     }
 
     // Step 3: Publish Media
+    console.log(`[IG PUBLISH] Container finished! Publishing media ${containerId}...`);
     const publishRes = await axios.post(`https://graph.facebook.com/${fbApiVersion}/${igUserId}/media_publish`, null, {
       params: { creation_id: containerId, access_token: pageToken }
     });
 
     const mediaId = publishRes.data.id;
-    const finalUrl = `https://instagram.com/p/${mediaId}`; // rough guess URL, exact permalink usually requires another API call
+    const finalUrl = `https://instagram.com/p/${mediaId}`;
 
     if (db) {
       await db.doc(`users/${req.uid}/posts/ig_${mediaId}`).set({
@@ -782,12 +827,51 @@ router.post('/instagram/publish', verifyAuth, async (req, res) => {
       });
     }
 
+    console.log(`[IG PUBLISH] Reel published successfully! Media ID: ${mediaId}`);
     res.json({ success: true, mediaId, mediaUrl: finalUrl });
   } catch (error) {
-    console.error('IG publish error:', error.response?.data || error.message);
-    res.status(500).json({ success: false, error: 'Failed to publish to Instagram' });
+    const errorMsg = error.response?.data?.error?.message || error.message;
+    console.error('[IG PUBLISH] Error:', error.response?.data || error.message);
+    res.status(500).json({ success: false, error: `Failed to publish to Instagram: ${errorMsg}` });
   }
 });
+
+/**
+ * POST /api/meta/upload-temp-video
+ * Temporary video upload proxy endpoint for Firebase Storage / public URL bridge
+ */
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
+
+router.post('/upload-temp-video', verifyAuth, upload.single('video'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No video file provided' });
+    }
+
+    const { storage } = require('../services/firebaseAdmin');
+    if (storage) {
+      const filename = `temp_uploads/${req.uid}/${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
+      const fileRef = storage.file(filename);
+      await fileRef.save(req.file.buffer, {
+        contentType: req.file.mimetype || 'video/mp4',
+        metadata: { firebaseStorageDownloadTokens: req.uid }
+      });
+      // Make file publicly accessible for 24h
+      const [signedUrl] = await fileRef.getSignedUrl({
+        action: 'read',
+        expires: Date.now() + 24 * 60 * 60 * 1000
+      });
+      return res.json({ success: true, publicUrl: signedUrl });
+    }
+
+    res.status(500).json({ success: false, error: 'Firebase Storage bucket is not configured' });
+  } catch (err) {
+    console.error('[META UPLOAD] Error uploading temp video:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 
 /**
  * DELETE /api/meta/disconnect

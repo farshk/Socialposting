@@ -835,24 +835,32 @@ const Composer = {
         let fbResult = null;
         let igResult = null;
         
-        // Mock public URL for Meta since we don't have Firebase Storage yet
-        const publicVideoUrl = "https://www.w3schools.com/html/mov_bbb.mp4";
+        let publicVideoUrl = null;
+
+        // If Facebook or Instagram is selected, upload video to obtain a public URL bridge
+        if ((platforms.includes('facebook') || platforms.includes('instagram')) && typeof Meta !== 'undefined') {
+          if (progressLabel) progressLabel.textContent = 'Uploading video file...';
+          publicVideoUrl = await Meta.uploadVideoFile(ComposerState.videoFile, (pct) => {
+            if (progressBar) progressBar.style.width = Math.round(pct * 0.5) + '%';
+            if (progressLabel) progressLabel.textContent = `Uploading video... ${pct}%`;
+          });
+        }
 
         if (platforms.includes('youtube') && typeof YouTube !== 'undefined') {
           if (progressLabel) progressLabel.textContent = 'Publishing to YouTube...';
           ytResult = await YouTube.upload(ComposerState.videoFile, { title, description: desc, tags, privacyStatus }, (pct) => {
             if (progressBar) progressBar.style.width = pct + '%';
-            if (progressLabel) progressLabel.textContent = pct + '%';
+            if (progressLabel) progressLabel.textContent = `YouTube: ${pct}%`;
           });
         }
         
-        if (platforms.includes('facebook') && typeof Meta !== 'undefined') {
-          if (progressLabel) progressLabel.textContent = 'Publishing to Facebook...';
+        if (platforms.includes('facebook') && typeof Meta !== 'undefined' && publicVideoUrl) {
+          if (progressLabel) progressLabel.textContent = 'Publishing to Facebook Page...';
           fbResult = await Meta.publishFacebook(publicVideoUrl, title, desc);
         }
 
-        if (platforms.includes('instagram') && typeof Meta !== 'undefined') {
-          if (progressLabel) progressLabel.textContent = 'Publishing to Instagram...';
+        if (platforms.includes('instagram') && typeof Meta !== 'undefined' && publicVideoUrl) {
+          if (progressLabel) progressLabel.textContent = 'Publishing to Instagram Reels...';
           igResult = await Meta.publishInstagram(publicVideoUrl, desc);
         }
 
@@ -882,11 +890,12 @@ const Composer = {
         if (progressWrap) progressWrap.classList.add('hidden');
         btn.innerHTML = '<i class="fas fa-upload"></i> Publish Now';
         btn.disabled = false;
-        App.toast('Upload failed. Please try again.', 'error');
-        console.error(err);
+        console.error('Publish error:', err);
+        App.toast(`Publishing failed: ${err.message || 'Please try again.'}`, 'error', 5000);
         return;
       }
     }
+
 
     // Fallback — non-YouTube or scheduled/draft (existing behavior)
     const post = {

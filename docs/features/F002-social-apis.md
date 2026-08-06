@@ -163,6 +163,12 @@ Why these 7 platforms matter:
 | FR-038 | **Instagram Linking:** Implement Instagram Creator/Business Account Linking via `GET /{page_id}?fields=instagram_business_account`. | Must Have |
 | FR-039 | **IG Reels:** Implement Instagram Reel 3-Step Pipeline: Container Creation, Status Polling, and Media Publishing. | Must Have |
 | FR-040 | **FB Video:** Implement Facebook Page Video Publishing, Resumable/Chunked Upload, and extract permalink URL. | Must Have |
+| FR-046 | **Meta Real Video Upload Pipeline:** System must take the user's uploaded video file from the Composer, proxy/host it to a publicly reachable URL, and pass the URL to `POST /api/facebook/publish` and `POST /api/instagram/publish`. | Must Have |
+| FR-047 | **Meta Concurrent Multi-Platform Publishing:** Composer must support parallel publishing to Facebook Page & Instagram Reels with individual status tracking and per-platform progress feedback. | Must Have |
+| FR-048 | **Facebook Video Post Status & Direct Link:** Successful Facebook video posts must store the returned `videoId` and `videoUrl` in Firestore/LocalStorage and display a working link on the Dashboard. | Must Have |
+| FR-049 | **Instagram Reels Status & Direct Link:** Successful Instagram Reels posts must complete container creation, status polling (`FINISHED`), store `mediaId` and `mediaUrl`, and display a working link on the Dashboard. | Must Have |
+| FR-050 | **Error Handling & Per-Platform Feedback:** If Facebook succeeds but Instagram fails (or vice versa), the system must present clear per-platform status badges on the Composer and preserve the post in history. | Must Have |
+
 
 ### 4.8 TikTok Integration
 | ID | Requirement | Priority |
@@ -223,6 +229,12 @@ Why these 7 platforms matter:
 | AC-043 | GIVEN TikTok content controls are set, WHEN publishing, THEN privacy level, comment, duet, and stitch toggles are applied to the payload. | FR-043 |
 | AC-044 | GIVEN Meta or TikTok metrics are requested, WHEN loaded, THEN they are served from Firestore cache within a 1-hour TTL. | FR-044 |
 | AC-045 | GIVEN the user views recent posts for Meta or TikTok, WHEN opened, THEN the modal lists the most recently published items. | FR-045 |
+| AC-046 | GIVEN a user selects a video in Composer, WHEN publishing to Facebook or Instagram, THEN the system uploads the video file to produce a public URL before calling Meta publishing APIs. | FR-046 |
+| AC-047 | GIVEN Facebook and Instagram are both selected, WHEN "Publish Now" is clicked, THEN the system publishes to both platforms in parallel with real-time progress updates. | FR-047 |
+| AC-048 | GIVEN a Facebook video publish request, WHEN Meta returns a video ID, THEN the post record stores `videoId` and `videoUrl` and displays a working Watch link on Dashboard. | FR-048 |
+| AC-049 | GIVEN an Instagram Reels publish request, WHEN container creation and status polling finish, THEN the post record stores `mediaId` and `mediaUrl` and displays a working Reel link. | FR-049 |
+| AC-050 | GIVEN a post succeeds on Facebook but fails on Instagram, WHEN processing completes, THEN the UI shows Facebook as Published and Instagram as Failed with an actionable error. | FR-050 |
+
 
 ---
 
@@ -454,3 +466,30 @@ The F002 BRD provides a comprehensive and well-structured plan for implementing 
 4. **Async Proxy Design:** Ensure the technical architecture explicitly notes handling long uploads asynchronously (or chunked via the frontend where possible) to avoid standard HTTP timeouts.
 
 **Verdict:** **Approved with Changes**
+
+---
+
+### Addendum: Meta (Facebook Page Video & Instagram Reels) Real Video Publishing Story Review
+**Date:** 2026-08-06  
+**Reviewer:** Senior Business Analyst Agent  
+**Focus:** Meta Real Video Upload & Parallel Publishing Pipeline (FR-046 – FR-050 & AC-046 – AC-050)
+
+#### 1. Evaluation Summary
+- **Completeness:** Excellent. Fully details the Firebase Storage URL bridge, parallel request dispatch to `/api/facebook/publish` and `/api/instagram/publish`, Instagram 3-step container lifecycle (Create -> Poll `status_code` -> `media_publish`), Facebook Page Video posting, payload persistence, and isolated multi-platform error reporting.
+- **Clarity:** Strong. Requirements FR-046 through FR-050 and acceptance criteria AC-046 through AC-050 are well-defined, unambiguously testable using standard Given/When/Then structures, and provide clear success/failure expectations.
+- **Consistency:** Fully consistent with the F002 BRD architecture (Firebase Storage media bridge, Node.js Express proxy, Firestore persistence) and the Viralify design system (status badges, post history links, error feedback).
+- **Feasibility:** High. The 3-step Instagram Reels container workflow and Facebook Page video URL ingestion are the exact standard protocols enforced by Meta Graph API v17.0+.
+
+#### 2. Key Strengths
+1. **End-to-End Meta Pipeline:** Clearly models the Instagram Graph API 3-step container publishing flow and Facebook video ingestion.
+2. **Robust Multi-Platform Fault Isolation:** Explicitly handles partial successes (e.g., FB succeeds, IG fails) so transient errors on one platform do not corrupt the overall post history or block the other platform.
+3. **Clean Storage Bridge Integration:** Leverages Firebase Storage (`temp_uploads`) as a public hosting URL bridge required by Meta Graph API, tied to existing 24-hour cleanup NFRs.
+
+#### 3. BA Recommendations for Implementation
+1. **Container Polling Guardrails:** Define an explicit timeout cap for Instagram container status polling (e.g., maximum 5 minutes or 30 attempts at 10s intervals) with exponential backoff to prevent hanging backend requests or infinite loops if Meta API experiences status delays.
+2. **Aspect Ratio & Length Pre-Validation:** Ensure the Composer UI validates or warns users if a video selected for Instagram Reels violates Meta's 9:16 aspect ratio or duration bounds (<= 15 minutes) prior to initiating Firebase upload.
+3. **Rate Limit Awareness:** Monitor Meta's `X-App-Usage` / `X-Page-Usage` response headers during status polling to dynamically adjust polling intervals if rate limits approach thresholds.
+
+#### 4. Final Story Verdict
+**Verdict:** **Approved with Changes** (Approved subject to incorporating backend polling timeout limits and client-side pre-validation guardrails).
+

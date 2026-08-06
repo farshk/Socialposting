@@ -138,6 +138,73 @@ const Meta = (function() {
     }
   }
 
+  async function uploadVideoFile(file, progressCb) {
+    if (!file) throw new Error('No video file selected');
+
+    // Strategy 1: Client-side Firebase Storage upload (if bucket is configured)
+    if (typeof firebase !== 'undefined' && firebase.storage && firebase.auth().currentUser) {
+      try {
+        const uid = firebase.auth().currentUser.uid;
+        const storageRef = firebase.storage().ref(`temp_uploads/${uid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9_.-]/g, '_')}`);
+        const uploadTask = storageRef.put(file);
+
+        await new Promise((resolve, reject) => {
+          uploadTask.on('state_changed', 
+            (snapshot) => {
+              const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+              if (progressCb) progressCb(pct);
+            },
+            (error) => reject(error),
+            () => resolve()
+          );
+        });
+
+        const downloadUrl = await uploadTask.snapshot.ref.getDownloadURL();
+        console.log('[META MEDIA BRIDGE] Uploaded via Firebase Storage SDK:', downloadUrl);
+        return downloadUrl;
+      } catch (err) {
+        console.warn('[META MEDIA BRIDGE] Frontend Firebase Storage upload failed/unconfigured, using backend proxy:', err.message);
+      }
+    }
+
+    // Strategy 2: Backend Upload Proxy
+    const token = await getFirebaseIdToken();
+    const formData = new FormData();
+    formData.append('video', file);
+
+    const xhr = new XMLHttpRequest();
+    return await new Promise((resolve, reject) => {
+      xhr.open('POST', `${BACKEND_URL}/api/meta/upload-temp-video`);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+      if (xhr.upload && progressCb) {
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            progressCb(pct);
+          }
+        };
+      }
+
+      xhr.onload = () => {
+        try {
+          const res = JSON.parse(xhr.responseText);
+          if (res.success && res.publicUrl) {
+            console.log('[META MEDIA BRIDGE] Uploaded via Backend Proxy:', res.publicUrl);
+            resolve(res.publicUrl);
+          } else {
+            reject(new Error(res.error || 'Backend upload failed'));
+          }
+        } catch (e) {
+          reject(new Error('Invalid upload response'));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Network error during video upload'));
+      xhr.send(formData);
+    });
+  }
+
   async function publishFacebook(videoUrl, title, description) {
     const token = await getFirebaseIdToken();
     const res = await fetch(`${BACKEND_URL}/api/facebook/publish`, {
@@ -157,6 +224,7 @@ const Meta = (function() {
     });
     return await res.json();
   }
+
 
   function init() {
     const connectFBBtn = document.getElementById('facebook-connect-btn');
@@ -232,11 +300,13 @@ const Meta = (function() {
     connect,
     disconnect,
     getPosts,
+    uploadVideoFile,
     publishFacebook,
     publishInstagram,
     debug
   };
 })();
+
 
 
 document.addEventListener('DOMContentLoaded', () => {

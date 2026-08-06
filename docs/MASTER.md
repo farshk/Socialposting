@@ -217,3 +217,6 @@ All agents working on this project MUST:
 | 2026-07-26 | BA Agent | Added FR-028 to FR-030, AC-023 to AC-025, and TS-012 for real YouTube channel stats & published videos viewer in F002 BRD and QA report |
 | 2026-07-26 | BA Agent | Added FR-031 to FR-035, AC-026 to AC-030, and TS-013 for New Post Video Publishing flow in F002 BRD and QA report |
 | 2026-07-26 | BA Agent | Updated F002-social-apis.md, F002-social-apis-test-report.md, APIS.md, and MASTER.md with Meta and TikTok API pipeline specifications and QA test suites (Phase 2 & 3). |
+| 2026-08-06 | BA Agent | Authored Meta Real Video Publishing Story requirements (FR-046 to FR-050, AC-046 to AC-050) in F002-social-apis.md for Facebook Page & Instagram Reels video uploads. |
+| 2026-08-06 | Senior BA Agent | Reviewed Meta Real Video Publishing Story requirements (FR-046 to FR-050, AC-046 to AC-050) — Verdict: Approved with Changes; added BA Review Addendum to Section 14 in F002-social-apis.md. |
+
